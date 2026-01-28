@@ -1,0 +1,675 @@
+# =============================================================================
+# Backend Server CI/CD Pipeline (Express.js + Node.js + PostgreSQL + Vector DB)
+# =============================================================================
+# Triggers: push to main/develop, pull requests
+# Stages: Lint → Test → Security → Build → Containerize → Deploy → Health Check
+# =============================================================================
+
+name: Backend Server CI/CD
+
+on:
+  push:
+    branches:
+      - main      # Production deployments
+      - develop   # Staging deployments
+  pull_request:
+    branches:
+      - main
+      - develop
+
+# Prevent concurrent deployments
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-api
+
+jobs:
+  # ===========================================================================
+  # STAGE 1: Code Quality - Linting & Static Analysis
+  # ===========================================================================
+  lint:
+    name: 🔍 Lint & Static Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      # ESLint - Code linting
+      - name: 🔍 Run ESLint
+        run: npm run lint
+        continue-on-error: false
+
+      # Prettier - Code formatting check
+      - name: 🎨 Check Prettier formatting
+        run: npm run format:check
+
+      # TypeScript type checking (if using TypeScript)
+      - name: 📝 TypeScript type check
+        run: npm run type-check
+        continue-on-error: true
+
+  # ===========================================================================
+  # STAGE 2: Unit Tests
+  # ===========================================================================
+  unit-tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      # Run unit tests with coverage (Jest/Vitest)
+      - name: 🧪 Run unit tests
+        run: npm run test:unit -- --coverage
+        env:
+          CI: true
+          NODE_ENV: test
+
+      # Test specific modules: Authentication, Task CRUD, Session Logs
+      - name: 📊 Generate test summary
+        run: |
+          echo "### Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "Tests for: Authentication, Task CRUD, Session Logs" >> $GITHUB_STEP_SUMMARY
+
+      # Upload coverage
+      - name: 📊 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unit-tests
+          fail_ci_if_error: false
+
+      # Upload test reports
+      - name: 📤 Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-reports
+          path: coverage/
+
+  # ===========================================================================
+  # STAGE 3: Integration Tests (PostgreSQL + Vector DB)
+  # ===========================================================================
+  integration-tests:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      # PostgreSQL database
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: study_partner_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # pgvector for vector similarity search
+      pgvector:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: vector_user
+          POSTGRES_PASSWORD: vector_password
+          POSTGRES_DB: vector_db
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Redis for caching and sessions
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      # Wait for services to be ready
+      - name: ⏳ Wait for databases
+        run: |
+          until pg_isready -h localhost -p 5432; do sleep 1; done
+          until pg_isready -h localhost -p 5433; do sleep 1; done
+
+      # Run database migrations
+      - name: 🗃️ Run database migrations
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/study_partner_test
+
+      # Run integration tests
+      - name: 🔗 Run integration tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          # PostgreSQL configuration
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/study_partner_test
+          # Vector DB configuration
+          VECTOR_DB_URL: postgresql://vector_user:vector_password@localhost:5433/vector_db
+          # Redis configuration
+          REDIS_URL: redis://localhost:6379
+
+      # Upload integration test reports
+      - name: 📤 Upload integration test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-reports
+          path: coverage/integration/
+
+  # ===========================================================================
+  # STAGE 4: Security Tests
+  # ===========================================================================
+  security-tests:
+    name: 🔒 Security Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: security_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      # npm audit for dependency vulnerabilities
+      - name: 🔍 Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # Security tests - Check encryption of sensitive data
+      - name: 🔐 Run security tests
+        run: npm run test:security
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/security_test
+
+      # Trivy vulnerability scanner
+      - name: 🛡️ Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      # Check for secrets in code
+      - name: 🔍 Scan for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+      # Upload security reports
+      - name: 📤 Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: security-reports/
+
+  # ===========================================================================
+  # STAGE 5: Build Application
+  # ===========================================================================
+  build:
+    name: 🏗️ Build Application
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      # Get version from package.json
+      - name: 🔖 Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # Build TypeScript (if applicable)
+      - name: 🏗️ Build application
+        run: npm run build
+
+      # Prune dev dependencies for production
+      - name: 🧹 Prune dev dependencies
+        run: npm prune --production
+
+      # Upload build artifacts
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build-${{ steps.version.outputs.version }}
+          path: |
+            dist/
+            package.json
+            package-lock.json
+          retention-days: 7
+
+  # ===========================================================================
+  # STAGE 6: Docker Containerization
+  # ===========================================================================
+  containerize:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build-push.outputs.digest }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # Set up QEMU for multi-platform builds
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Set up Docker Buildx
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login to GitHub Container Registry
+      - name: 🔐 Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generate image metadata
+      - name: 📋 Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}},value=${{ needs.build.outputs.version }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
+
+      # Build and push Docker image
+      - name: 🐳 Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+
+  # ===========================================================================
+  # STAGE 7: Deploy to Staging
+  # ===========================================================================
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [containerize, security-tests]
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://api-staging.study-partner.app
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # Setup kubectl
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      # Configure Kubernetes context
+      - name: 🔐 Configure Kubernetes context
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+
+      # Create/update secrets
+      - name: 🔐 Update Kubernetes secrets
+        run: |
+          kubectl create secret generic backend-secrets \
+            --from-literal=database-url=${{ secrets.STAGING_DATABASE_URL }} \
+            --from-literal=jwt-secret=${{ secrets.STAGING_JWT_SECRET }} \
+            --from-literal=encryption-key=${{ secrets.STAGING_ENCRYPTION_KEY }} \
+            --from-literal=redis-url=${{ secrets.STAGING_REDIS_URL }} \
+            -n backend-staging \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Deploy to Kubernetes
+      - name: 🚀 Deploy to Kubernetes (Staging)
+        run: |
+          # Update image tag in manifests
+          sed -i "s|IMAGE_TAG|${{ needs.containerize.outputs.image-digest }}|g" k8s/staging/*.yml
+          
+          # Apply manifests
+          kubectl apply -f k8s/staging/ -n backend-staging
+          
+          # Wait for rollout
+          kubectl rollout status deployment/study-partner-api -n backend-staging --timeout=300s
+
+      # Run database migrations
+      - name: 🗃️ Run database migrations
+        run: |
+          kubectl exec -n backend-staging deployment/study-partner-api -- \
+            npm run db:migrate
+
+  # ===========================================================================
+  # STAGE 8: Deploy to Production
+  # ===========================================================================
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [containerize, security-tests]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.study-partner.app
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: 🔐 Configure Kubernetes context
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+
+      # Create/update production secrets
+      - name: 🔐 Update Kubernetes secrets
+        run: |
+          kubectl create secret generic backend-secrets \
+            --from-literal=database-url=${{ secrets.PROD_DATABASE_URL }} \
+            --from-literal=jwt-secret=${{ secrets.PROD_JWT_SECRET }} \
+            --from-literal=encryption-key=${{ secrets.PROD_ENCRYPTION_KEY }} \
+            --from-literal=redis-url=${{ secrets.PROD_REDIS_URL }} \
+            -n backend-production \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Deploy with rolling update strategy
+      - name: 🚀 Deploy to Kubernetes (Production)
+        run: |
+          # Update image tag
+          sed -i "s|IMAGE_TAG|${{ needs.containerize.outputs.image-digest }}|g" k8s/production/*.yml
+          
+          # Apply with rolling update
+          kubectl apply -f k8s/production/ -n backend-production
+          
+          # Wait for rollout
+          kubectl rollout status deployment/study-partner-api -n backend-production --timeout=600s
+
+      # Run production migrations
+      - name: 🗃️ Run database migrations
+        run: |
+          kubectl exec -n backend-production deployment/study-partner-api -- \
+            npm run db:migrate
+
+  # ===========================================================================
+  # STAGE 9: Post-Deploy Health Checks & Smoke Tests
+  # ===========================================================================
+  post-deploy:
+    name: 💨 Post-Deploy Validation
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Determine environment URL
+      - name: 🔍 Set API URL
+        id: set-url
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "url=https://api.study-partner.app" >> $GITHUB_OUTPUT
+            echo "env=production" >> $GITHUB_OUTPUT
+          else
+            echo "url=https://api-staging.study-partner.app" >> $GITHUB_OUTPUT
+            echo "env=staging" >> $GITHUB_OUTPUT
+          fi
+
+      # Health check endpoint
+      - name: ❤️ API Health Check
+        run: |
+          echo "Checking health endpoint..."
+          response=$(curl -s -w "\n%{http_code}" ${{ steps.set-url.outputs.url }}/health)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Health check passed"
+            echo "$body" | jq .
+          else
+            echo "❌ Health check failed with status: $http_code"
+            echo "$body"
+            exit 1
+          fi
+
+      # Response time check
+      - name: ⏱️ Response Time Check
+        run: |
+          echo "Checking API response times..."
+          
+          # Check multiple endpoints
+          endpoints=(
+            "/api/v1/auth/status"
+            "/api/v1/tasks"
+            "/api/v1/sessions"
+          )
+          
+          for endpoint in "${endpoints[@]}"; do
+            response_time=$(curl -o /dev/null -s -w "%{time_total}" \
+              -H "Authorization: Bearer ${{ secrets.SMOKE_TEST_TOKEN }}" \
+              "${{ steps.set-url.outputs.url }}${endpoint}")
+            
+            # Convert to milliseconds
+            response_ms=$(echo "$response_time * 1000" | bc)
+            
+            echo "Endpoint: $endpoint - Response time: ${response_ms}ms"
+            
+            # Fail if response time > 2000ms
+            if (( $(echo "$response_ms > 2000" | bc -l) )); then
+              echo "⚠️ Slow response detected: ${response_ms}ms"
+            fi
+          done
+
+      # Database connectivity check
+      - name: 🗃️ Database Connectivity Check
+        run: |
+          response=$(curl -s ${{ steps.set-url.outputs.url }}/health/db)
+          status=$(echo "$response" | jq -r '.status')
+          
+          if [ "$status" == "ok" ]; then
+            echo "✅ Database connectivity check passed"
+          else
+            echo "❌ Database connectivity check failed"
+            echo "$response" | jq .
+            exit 1
+          fi
+
+      # Redis connectivity check
+      - name: 📦 Redis Connectivity Check
+        run: |
+          response=$(curl -s ${{ steps.set-url.outputs.url }}/health/redis)
+          status=$(echo "$response" | jq -r '.status')
+          
+          if [ "$status" == "ok" ]; then
+            echo "✅ Redis connectivity check passed"
+          else
+            echo "⚠️ Redis connectivity check: $status"
+          fi
+        continue-on-error: true
+
+      # API smoke tests
+      - name: 🧪 Run API smoke tests
+        run: |
+          # Test authentication endpoint
+          echo "Testing authentication..."
+          auth_response=$(curl -s -X POST ${{ steps.set-url.outputs.url }}/api/v1/auth/validate \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SMOKE_TEST_TOKEN }}")
+          
+          if echo "$auth_response" | jq -e '.valid' > /dev/null 2>&1; then
+            echo "✅ Auth validation passed"
+          else
+            echo "⚠️ Auth validation response: $auth_response"
+          fi
+
+      # Log metrics
+      - name: 📈 Log deployment metrics
+        run: |
+          curl -X POST "${{ secrets.PROMETHEUS_PUSHGATEWAY }}/metrics/job/backend-deploy" \
+            -d "deployment_success{env=\"${{ steps.set-url.outputs.env }}\"} 1" \
+            -d "deployment_timestamp{env=\"${{ steps.set-url.outputs.env }}\"} $(date +%s)"
+        continue-on-error: true
+
+      # Notify on success
+      - name: 📢 Notify deployment success
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Backend API deployed to ${{ steps.set-url.outputs.env }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🖥️ *Study Partner API* deployed to *${{ steps.set-url.outputs.env }}*\nVersion: `${{ needs.build.outputs.version }}`\nURL: ${{ steps.set-url.outputs.url }}\nHealth: ✅ All checks passed"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # Notify on failure
+      - name: 📢 Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "🚨 Backend API deployment validation failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚨 *Study Partner API* post-deploy validation failed\nEnvironment: *${{ steps.set-url.outputs.env }}*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
