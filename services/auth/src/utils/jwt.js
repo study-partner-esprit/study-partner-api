@@ -13,7 +13,7 @@ const config = require('../config');
 const generateAccessToken = (payload) => {
   return jwt.sign(payload, config.jwt.secret, {
     expiresIn: config.jwt.accessExpiresIn,
-    issuer: config.jwt.issuer,
+    issuer: config.jwt.issuer
   });
 };
 
@@ -25,7 +25,7 @@ const generateAccessToken = (payload) => {
 const verifyAccessToken = (token) => {
   try {
     return jwt.verify(token, config.jwt.secret, {
-      issuer: config.jwt.issuer,
+      issuer: config.jwt.issuer
     });
   } catch (error) {
     return null;
@@ -53,17 +53,17 @@ const decodeToken = (token) => {
 const getExpirationMs = (duration) => {
   const match = duration.match(/^(\d+)([smhd])$/);
   if (!match) return 0;
-  
+
   const value = parseInt(match[1], 10);
   const unit = match[2];
-  
+
   const multipliers = {
     s: 1000,
     m: 60 * 1000,
     h: 60 * 60 * 1000,
-    d: 24 * 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000
   };
-  
+
   return value * multipliers[unit];
 };
 
@@ -71,5 +71,5 @@ module.exports = {
   generateAccessToken,
   verifyAccessToken,
   decodeToken,
-  getExpirationMs,
+  getExpirationMs
 };

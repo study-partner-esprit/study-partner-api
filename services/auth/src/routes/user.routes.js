@@ -3,11 +3,7 @@
  */
 const express = require('express');
 const { roleController } = require('../controllers');
-const {
-  authenticate,
-  requireAdmin,
-  validateAssignRole,
-} = require('../middlewares');
+const { authenticate, requireAdmin, validateAssignRole } = require('../middlewares');
 
 const router = express.Router();
 
@@ -36,11 +32,6 @@ router.post(
  * @desc    Remove role from user
  * @access  Admin
  */
-router.delete(
-  '/:userId/roles/:roleId',
-  authenticate,
-  requireAdmin,
-  roleController.removeRole
-);
+router.delete('/:userId/roles/:roleId', authenticate, requireAdmin, roleController.removeRole);
 
 module.exports = router;

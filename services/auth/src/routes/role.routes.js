@@ -3,12 +3,7 @@
  */
 const express = require('express');
 const { roleController } = require('../controllers');
-const {
-  authenticate,
-  requireAdmin,
-  validateCreateRole,
-  validateAssignRole,
-} = require('../middlewares');
+const { authenticate, requireAdmin, validateCreateRole } = require('../middlewares');
 
 const router = express.Router();
 

@@ -10,5 +10,5 @@ module.exports = {
   subjectRoutes,
   sessionRoutes,
   taskRoutes,
-  healthRoutes,
+  healthRoutes
 };

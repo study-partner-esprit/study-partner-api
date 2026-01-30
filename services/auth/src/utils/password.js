@@ -31,7 +31,7 @@ const verifyPassword = async (password, hash) => {
  */
 const checkPasswordStrength = (password) => {
   const errors = [];
-  
+
   if (password.length < 8) {
     errors.push('Password must be at least 8 characters');
   }
@@ -47,15 +47,15 @@ const checkPasswordStrength = (password) => {
   if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
-  
+
   return {
     isValid: errors.length === 0,
-    errors,
+    errors
   };
 };
 
 module.exports = {
   hashPassword,
   verifyPassword,
-  checkPasswordStrength,
+  checkPasswordStrength
 };

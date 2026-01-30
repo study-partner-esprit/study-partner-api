@@ -2,7 +2,12 @@
  * Middlewares Index
  */
 const { authenticate, optionalAuth } = require('./auth.middleware');
-const { requireRoles, requireAdmin, requireModerator, requireOwnerOrAdmin } = require('./rbac.middleware');
+const {
+  requireRoles,
+  requireAdmin,
+  requireModerator,
+  requireOwnerOrAdmin
+} = require('./rbac.middleware');
 const validation = require('./validation.middleware');
 
 module.exports = {
@@ -12,5 +17,5 @@ module.exports = {
   requireAdmin,
   requireModerator,
   requireOwnerOrAdmin,
-  ...validation,
+  ...validation
 };

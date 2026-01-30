@@ -6,5 +6,5 @@ const roleController = require('./role.controller');
 
 module.exports = {
   authController,
-  roleController,
+  roleController
 };

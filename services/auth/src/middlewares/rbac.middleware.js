@@ -14,16 +14,16 @@ const requireRoles = (...allowedRoles) => {
     if (!req.user) {
       return next(ApiError.unauthorized('Authentication required'));
     }
-    
+
     const userRoles = req.user.roles || [];
-    const hasPermission = allowedRoles.some(role => userRoles.includes(role));
-    
+    const hasPermission = allowedRoles.some((role) => userRoles.includes(role));
+
     if (!hasPermission) {
-      return next(ApiError.forbidden(
-        `Requires one of the following roles: ${allowedRoles.join(', ')}`
-      ));
+      return next(
+        ApiError.forbidden(`Requires one of the following roles: ${allowedRoles.join(', ')}`)
+      );
     }
-    
+
     next();
   };
 };
@@ -48,21 +48,21 @@ const requireOwnerOrAdmin = (getResourceUserId) => {
     if (!req.user) {
       return next(ApiError.unauthorized('Authentication required'));
     }
-    
+
     const userRoles = req.user.roles || [];
     const isAdmin = userRoles.includes('admin');
-    
+
     if (isAdmin) {
       return next();
     }
-    
+
     try {
       const resourceUserId = await getResourceUserId(req);
-      
+
       if (resourceUserId !== req.user.sub) {
         return next(ApiError.forbidden('Access denied'));
       }
-      
+
       next();
     } catch (error) {
       next(error);
@@ -74,5 +74,5 @@ module.exports = {
   requireRoles,
   requireAdmin,
   requireModerator,
-  requireOwnerOrAdmin,
+  requireOwnerOrAdmin
 };

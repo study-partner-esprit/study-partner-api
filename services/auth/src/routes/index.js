@@ -10,5 +10,5 @@ module.exports = {
   authRoutes,
   roleRoutes,
   userRoutes,
-  healthRoutes,
+  healthRoutes
 };

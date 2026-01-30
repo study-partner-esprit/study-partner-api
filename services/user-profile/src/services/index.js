@@ -8,5 +8,5 @@ const goalsService = require('./goals.service');
 module.exports = {
   profileService,
   preferencesService,
-  goalsService,
+  goalsService
 };

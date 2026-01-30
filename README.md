@@ -23,18 +23,19 @@ A scalable microservices architecture for the Study Partner application built wi
 
 ## 📦 Services
 
-| Service | Port | Database | Description |
-|---------|------|----------|-------------|
-| Auth Service | 3001 | PostgreSQL | JWT authentication, RBAC, user credentials |
-| User Profile | 3002 | PostgreSQL | User profiles, preferences, learning goals |
-| Study Service | 3003 | PostgreSQL | Subjects, topics, sessions, tasks, materials |
-| AI Orchestrator | 3004 | PostgreSQL + MongoDB | AI agent coordination (planned) |
-| Notification | 3005 | PostgreSQL | Email, push notifications (planned) |
-| Analytics | 3006 | PostgreSQL + MongoDB | Learning analytics (planned) |
+| Service         | Port | Database             | Description                                  |
+| --------------- | ---- | -------------------- | -------------------------------------------- |
+| Auth Service    | 3001 | PostgreSQL           | JWT authentication, RBAC, user credentials   |
+| User Profile    | 3002 | PostgreSQL           | User profiles, preferences, learning goals   |
+| Study Service   | 3003 | PostgreSQL           | Subjects, topics, sessions, tasks, materials |
+| AI Orchestrator | 3004 | PostgreSQL + MongoDB | AI agent coordination (planned)              |
+| Notification    | 3005 | PostgreSQL           | Email, push notifications (planned)          |
+| Analytics       | 3006 | PostgreSQL + MongoDB | Learning analytics (planned)                 |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js >= 20.0.0
 - pnpm (recommended) or npm >= 10.0.0
 - Docker & Docker Compose
@@ -119,58 +120,58 @@ study-partner-api/
 
 ### Auth Service (Port 3001)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/register` | Register new user |
-| POST | `/auth/login` | Login, get tokens |
-| POST | `/auth/refresh` | Refresh access token |
-| POST | `/auth/logout` | Logout (revoke refresh token) |
-| POST | `/auth/logout-all` | Logout from all devices |
-| GET | `/auth/me` | Get current user info |
-| GET | `/roles` | Get all roles |
-| POST | `/roles` | Create role (admin) |
-| GET | `/users/:userId/roles` | Get user roles |
-| POST | `/users/:userId/roles` | Assign role (admin) |
+| Method | Endpoint               | Description                   |
+| ------ | ---------------------- | ----------------------------- |
+| POST   | `/auth/register`       | Register new user             |
+| POST   | `/auth/login`          | Login, get tokens             |
+| POST   | `/auth/refresh`        | Refresh access token          |
+| POST   | `/auth/logout`         | Logout (revoke refresh token) |
+| POST   | `/auth/logout-all`     | Logout from all devices       |
+| GET    | `/auth/me`             | Get current user info         |
+| GET    | `/roles`               | Get all roles                 |
+| POST   | `/roles`               | Create role (admin)           |
+| GET    | `/users/:userId/roles` | Get user roles                |
+| POST   | `/users/:userId/roles` | Assign role (admin)           |
 
 ### User Profile Service (Port 3002)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/profile` | Get user profile |
-| PUT | `/profile` | Update profile |
-| POST | `/profile/onboarding/complete` | Mark onboarding complete |
-| GET | `/preferences` | Get preferences |
-| PUT | `/preferences` | Update preferences |
-| POST | `/preferences/reset` | Reset to defaults |
-| GET | `/goals` | List learning goals |
-| POST | `/goals` | Create goal |
-| PUT | `/goals/:goalId` | Update goal |
-| DELETE | `/goals/:goalId` | Delete goal |
+| Method | Endpoint                       | Description              |
+| ------ | ------------------------------ | ------------------------ |
+| GET    | `/profile`                     | Get user profile         |
+| PUT    | `/profile`                     | Update profile           |
+| POST   | `/profile/onboarding/complete` | Mark onboarding complete |
+| GET    | `/preferences`                 | Get preferences          |
+| PUT    | `/preferences`                 | Update preferences       |
+| POST   | `/preferences/reset`           | Reset to defaults        |
+| GET    | `/goals`                       | List learning goals      |
+| POST   | `/goals`                       | Create goal              |
+| PUT    | `/goals/:goalId`               | Update goal              |
+| DELETE | `/goals/:goalId`               | Delete goal              |
 
 ### Study Service (Port 3003)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/subjects` | List subjects |
-| POST | `/subjects` | Create subject |
-| GET | `/subjects/:id/stats` | Get subject stats |
-| GET | `/sessions` | List study sessions |
-| POST | `/sessions` | Create session |
-| POST | `/sessions/:id/start` | Start session |
-| POST | `/sessions/:id/end` | End session |
-| GET | `/sessions/active` | Get active session |
-| GET | `/tasks` | List tasks |
-| POST | `/tasks` | Create task |
-| POST | `/tasks/:id/complete` | Complete task |
-| GET | `/tasks/due-soon` | Get tasks due soon |
-| GET | `/tasks/overdue` | Get overdue tasks |
+| Method | Endpoint              | Description         |
+| ------ | --------------------- | ------------------- |
+| GET    | `/subjects`           | List subjects       |
+| POST   | `/subjects`           | Create subject      |
+| GET    | `/subjects/:id/stats` | Get subject stats   |
+| GET    | `/sessions`           | List study sessions |
+| POST   | `/sessions`           | Create session      |
+| POST   | `/sessions/:id/start` | Start session       |
+| POST   | `/sessions/:id/end`   | End session         |
+| GET    | `/sessions/active`    | Get active session  |
+| GET    | `/tasks`              | List tasks          |
+| POST   | `/tasks`              | Create task         |
+| POST   | `/tasks/:id/complete` | Complete task       |
+| GET    | `/tasks/due-soon`     | Get tasks due soon  |
+| GET    | `/tasks/overdue`      | Get overdue tasks   |
 
 ### Health Checks (All Services)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Basic health check |
-| GET | `/health/ready` | Readiness (includes DB) |
+| Method | Endpoint        | Description             |
+| ------ | --------------- | ----------------------- |
+| GET    | `/health`       | Basic health check      |
+| GET    | `/health/ready` | Readiness (includes DB) |
 
 ## 🔐 Authentication
 
@@ -236,6 +237,7 @@ DB_NAME=study_partner_study
 ## 📊 Database Schema
 
 ### Auth Service
+
 - `users` - User accounts (id, email, status)
 - `credentials` - Password storage (hashed)
 - `roles` - Role definitions
@@ -243,11 +245,13 @@ DB_NAME=study_partner_study
 - `refresh_tokens` - Token management
 
 ### User Profile Service
+
 - `user_profiles` - Profile information
 - `user_preferences` - App settings
 - `learning_goals` - User goals
 
 ### Study Service
+
 - `subjects` - Study subjects
 - `topics` - Topics within subjects
 - `study_sessions` - Study session records
@@ -258,7 +262,8 @@ DB_NAME=study_partner_study
 
 MIT
 npm test -- --coverage
-```
+
+````
 
 ## 🔧 Development
 
@@ -271,7 +276,7 @@ npm run format
 
 # Check formatting
 npm run format:check
-```
+````
 
 ## 🐳 Docker Commands
 
@@ -295,6 +300,7 @@ See `.env.example` for all available configuration options.
 ## 📊 Monitoring
 
 The API includes:
+
 - Winston logging
 - Morgan HTTP request logging
 - Health check endpoints

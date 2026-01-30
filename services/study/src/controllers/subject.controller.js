@@ -34,7 +34,11 @@ class SubjectController {
 
   async updateSubject(req, res, next) {
     try {
-      const subject = await subjectService.updateSubject(req.user.sub, req.params.subjectId, req.body);
+      const subject = await subjectService.updateSubject(
+        req.user.sub,
+        req.params.subjectId,
+        req.body
+      );
       res.json({ success: true, data: { subject } });
     } catch (error) {
       next(error);

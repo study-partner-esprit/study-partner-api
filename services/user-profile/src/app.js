@@ -20,7 +20,7 @@ app.use(cors(config.cors));
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.max,
-  message: { success: false, message: 'Too many requests' },
+  message: { success: false, message: 'Too many requests' }
 });
 app.use(limiter);
 

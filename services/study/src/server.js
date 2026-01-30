@@ -14,16 +14,16 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     logger.info('Database connection established');
-    
+
     if (config.env === 'development') {
       await sequelize.sync({ alter: true });
       logger.info('Database models synchronized');
     }
-    
+
     const server = app.listen(config.port, () => {
       logger.info(`Study service running on port ${config.port}`);
     });
-    
+
     const gracefulShutdown = async (signal) => {
       logger.info(`${signal} received. Starting graceful shutdown...`);
       server.close(async () => {
@@ -33,10 +33,9 @@ async function startServer() {
       });
       setTimeout(() => process.exit(1), 30000);
     };
-    
+
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

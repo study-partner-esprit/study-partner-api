@@ -8,5 +8,5 @@ const goalsController = require('./goals.controller');
 module.exports = {
   profileController,
   preferencesController,
-  goalsController,
+  goalsController
 };

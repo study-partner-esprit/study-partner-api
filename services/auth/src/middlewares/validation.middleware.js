@@ -14,26 +14,26 @@ const passwordSchema = Joi.string()
 // Auth schemas
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: passwordSchema.required(),
+  password: passwordSchema.required()
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().required(),
+  password: Joi.string().required()
 });
 
 const refreshSchema = Joi.object({
-  refreshToken: Joi.string().required(),
+  refreshToken: Joi.string().required()
 });
 
 // Role schemas
 const createRoleSchema = Joi.object({
   name: Joi.string().min(2).max(50).required(),
-  description: Joi.string().max(255),
+  description: Joi.string().max(255)
 });
 
 const assignRoleSchema = Joi.object({
-  roleId: Joi.number().integer().positive().required(),
+  roleId: Joi.number().integer().positive().required()
 });
 
 // Export validation middlewares
@@ -42,5 +42,5 @@ module.exports = {
   validateLogin: validateRequest(loginSchema),
   validateRefresh: validateRequest(refreshSchema),
   validateCreateRole: validateRequest(createRoleSchema),
-  validateAssignRole: validateRequest(assignRoleSchema),
+  validateAssignRole: validateRequest(assignRoleSchema)
 };

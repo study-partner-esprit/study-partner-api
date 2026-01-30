@@ -27,10 +27,10 @@ const limiter = rateLimit({
   max: config.rateLimit.max,
   message: {
     success: false,
-    message: 'Too many requests, please try again later',
+    message: 'Too many requests, please try again later'
   },
   standardHeaders: true,
-  legacyHeaders: false,
+  legacyHeaders: false
 });
 app.use(limiter);
 
@@ -40,10 +40,10 @@ const authLimiter = rateLimit({
   max: 10, // 10 attempts per window
   message: {
     success: false,
-    message: 'Too many authentication attempts, please try again later',
+    message: 'Too many authentication attempts, please try again later'
   },
   standardHeaders: true,
-  legacyHeaders: false,
+  legacyHeaders: false
 });
 
 // ====================

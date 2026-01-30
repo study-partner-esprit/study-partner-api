@@ -11,39 +11,39 @@ const RefreshToken = require('./refreshToken.model');
 // ==================== ASSOCIATIONS ====================
 
 // User <-> Credential (1:1)
-User.hasOne(Credential, { 
-  foreignKey: 'userId', 
+User.hasOne(Credential, {
+  foreignKey: 'userId',
   as: 'credential',
-  onDelete: 'CASCADE',
+  onDelete: 'CASCADE'
 });
-Credential.belongsTo(User, { 
-  foreignKey: 'userId', 
-  as: 'user',
+Credential.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
 });
 
 // User <-> Role (M:N through UserRole)
-User.belongsToMany(Role, { 
-  through: UserRole, 
+User.belongsToMany(Role, {
+  through: UserRole,
   foreignKey: 'userId',
   otherKey: 'roleId',
-  as: 'roles',
+  as: 'roles'
 });
-Role.belongsToMany(User, { 
-  through: UserRole, 
+Role.belongsToMany(User, {
+  through: UserRole,
   foreignKey: 'roleId',
   otherKey: 'userId',
-  as: 'users',
+  as: 'users'
 });
 
 // User <-> RefreshToken (1:M)
-User.hasMany(RefreshToken, { 
-  foreignKey: 'userId', 
+User.hasMany(RefreshToken, {
+  foreignKey: 'userId',
   as: 'refreshTokens',
-  onDelete: 'CASCADE',
+  onDelete: 'CASCADE'
 });
-RefreshToken.belongsTo(User, { 
-  foreignKey: 'userId', 
-  as: 'user',
+RefreshToken.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
 });
 
 module.exports = {
@@ -51,5 +51,5 @@ module.exports = {
   Credential,
   Role,
   UserRole,
-  RefreshToken,
+  RefreshToken
 };

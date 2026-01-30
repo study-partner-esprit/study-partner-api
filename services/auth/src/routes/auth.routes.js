@@ -3,11 +3,11 @@
  */
 const express = require('express');
 const { authController } = require('../controllers');
-const { 
-  authenticate, 
-  validateRegister, 
-  validateLogin, 
-  validateRefresh,
+const {
+  authenticate,
+  validateRegister,
+  validateLogin,
+  validateRefresh
 } = require('../middlewares');
 
 const router = express.Router();

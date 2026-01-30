@@ -28,13 +28,9 @@ const createLogger = (serviceName = 'api') => {
     defaultMeta: { service: serviceName },
     transports: [
       new winston.transports.Console({
-        format: combine(
-          colorize(),
-          timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-          logFormat
-        ),
-      }),
-    ],
+        format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), logFormat)
+      })
+    ]
   });
 
   // Add file transports in production
@@ -44,14 +40,14 @@ const createLogger = (serviceName = 'api') => {
         filename: `logs/${serviceName}-error.log`,
         level: 'error',
         maxsize: 5242880,
-        maxFiles: 5,
+        maxFiles: 5
       })
     );
     logger.add(
       new winston.transports.File({
         filename: `logs/${serviceName}-combined.log`,
         maxsize: 5242880,
-        maxFiles: 5,
+        maxFiles: 5
       })
     );
   }

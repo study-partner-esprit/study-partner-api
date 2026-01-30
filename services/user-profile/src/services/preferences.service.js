@@ -10,11 +10,11 @@ class PreferencesService {
    */
   async getPreferences(userId) {
     let preferences = await UserPreferences.findOne({ where: { userId } });
-    
+
     if (!preferences) {
       preferences = await UserPreferences.create({ userId });
     }
-    
+
     return preferences;
   }
 
@@ -23,13 +23,13 @@ class PreferencesService {
    */
   async updatePreferences(userId, data) {
     let preferences = await UserPreferences.findOne({ where: { userId } });
-    
+
     if (!preferences) {
       preferences = await UserPreferences.create({ userId, ...data });
     } else {
       await preferences.update(data);
     }
-    
+
     return preferences;
   }
 
@@ -38,11 +38,11 @@ class PreferencesService {
    */
   async resetPreferences(userId) {
     const preferences = await UserPreferences.findOne({ where: { userId } });
-    
+
     if (!preferences) {
       throw ApiError.notFound('Preferences not found');
     }
-    
+
     await preferences.update({
       preferredStudyDuration: 25,
       preferredBreakDuration: 5,
@@ -53,9 +53,9 @@ class PreferencesService {
       aiDifficulty: 'adaptive',
       aiPersonality: 'encouraging',
       theme: 'system',
-      accentColor: '#6366f1',
+      accentColor: '#6366f1'
     });
-    
+
     return preferences;
   }
 }

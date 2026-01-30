@@ -8,5 +8,5 @@ const taskService = require('./task.service');
 module.exports = {
   subjectService,
   sessionService,
-  taskService,
+  taskService
 };

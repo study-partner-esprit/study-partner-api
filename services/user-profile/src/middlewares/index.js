@@ -4,5 +4,5 @@
 const { authenticate } = require('./auth.middleware');
 
 module.exports = {
-  authenticate,
+  authenticate
 };

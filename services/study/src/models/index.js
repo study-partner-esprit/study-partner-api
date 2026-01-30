@@ -12,71 +12,71 @@ const { sequelize } = require('../config/database');
 Subject.hasMany(Topic, {
   foreignKey: 'subjectId',
   as: 'topics',
-  onDelete: 'CASCADE',
+  onDelete: 'CASCADE'
 });
 Topic.belongsTo(Subject, {
   foreignKey: 'subjectId',
-  as: 'subject',
+  as: 'subject'
 });
 
 // Subject -> Study Sessions
 Subject.hasMany(StudySession, {
   foreignKey: 'subjectId',
-  as: 'sessions',
+  as: 'sessions'
 });
 StudySession.belongsTo(Subject, {
   foreignKey: 'subjectId',
-  as: 'subject',
+  as: 'subject'
 });
 
 // Topic -> Study Sessions
 Topic.hasMany(StudySession, {
   foreignKey: 'topicId',
-  as: 'sessions',
+  as: 'sessions'
 });
 StudySession.belongsTo(Topic, {
   foreignKey: 'topicId',
-  as: 'topic',
+  as: 'topic'
 });
 
 // Subject -> Tasks
 Subject.hasMany(Task, {
   foreignKey: 'subjectId',
-  as: 'tasks',
+  as: 'tasks'
 });
 Task.belongsTo(Subject, {
   foreignKey: 'subjectId',
-  as: 'subject',
+  as: 'subject'
 });
 
 // Topic -> Tasks
 Topic.hasMany(Task, {
   foreignKey: 'topicId',
-  as: 'tasks',
+  as: 'tasks'
 });
 Task.belongsTo(Topic, {
   foreignKey: 'topicId',
-  as: 'topic',
+  as: 'topic'
 });
 
 // Subject -> Study Materials
 Subject.hasMany(StudyMaterial, {
   foreignKey: 'subjectId',
-  as: 'materials',
+  as: 'materials'
 });
 StudyMaterial.belongsTo(Subject, {
   foreignKey: 'subjectId',
-  as: 'subject',
+  as: 'subject'
 });
 
 // Topic -> Study Materials
 Topic.hasMany(StudyMaterial, {
   foreignKey: 'topicId',
-  as: 'materials',
+  as: 'materials'
 });
 StudyMaterial.belongsTo(Topic, {
   foreignKey: 'topicId',
-  as: 'topic',
+  as: 'topic'
 });
 
 module.exports = {
@@ -85,5 +85,5 @@ module.exports = {
   Topic,
   StudySession,
   Task,
-  StudyMaterial,
+  StudyMaterial
 };

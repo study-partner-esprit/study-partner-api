@@ -9,7 +9,7 @@ class ApiError extends Error {
     this.statusCode = statusCode;
     this.isOperational = isOperational;
     this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
-    
+
     if (stack) {
       this.stack = stack;
     } else {
@@ -51,7 +51,7 @@ class ApiError extends Error {
  */
 const errorHandler = (err, req, res, next) => {
   const logger = require('./logger');
-  
+
   let { statusCode, message } = err;
 
   // Default to 500 if no status code
@@ -75,7 +75,7 @@ const errorHandler = (err, req, res, next) => {
     success: false,
     status: err.status || 'error',
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 };
 

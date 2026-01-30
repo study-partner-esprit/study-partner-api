@@ -15,7 +15,7 @@ const validateRequest = (schema) => {
     const validationOptions = {
       abortEarly: false, // Include all errors
       allowUnknown: true, // Ignore unknown props
-      stripUnknown: true, // Remove unknown props
+      stripUnknown: true // Remove unknown props
     };
 
     const errors = [];

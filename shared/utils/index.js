@@ -10,5 +10,5 @@ module.exports = {
   logger,
   ApiError,
   errorHandler,
-  validateRequest,
+  validateRequest
 };

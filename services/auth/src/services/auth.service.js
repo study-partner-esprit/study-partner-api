@@ -16,41 +16,44 @@ class AuthService {
    */
   async register({ email, password }) {
     const transaction = await sequelize.transaction();
-    
+
     try {
       // Check if user exists
       const existingUser = await User.findOne({ where: { email } });
       if (existingUser) {
         throw ApiError.conflict('Email already registered');
       }
-      
+
       // Create user
       const user = await User.create({ email }, { transaction });
-      
+
       // Create credential (password will be hashed by hook)
-      await Credential.create({
-        userId: user.id,
-        passwordHash: password,
-      }, { transaction });
-      
+      await Credential.create(
+        {
+          userId: user.id,
+          passwordHash: password
+        },
+        { transaction }
+      );
+
       // Assign default role (student)
       const studentRole = await Role.findOne({ where: { name: 'student' } });
       if (studentRole) {
         await user.addRole(studentRole, { transaction });
       }
-      
+
       await transaction.commit();
-      
+
       // Fetch user with roles
       const newUser = await User.findByPk(user.id, {
-        include: [{ model: Role, as: 'roles', attributes: ['name'] }],
+        include: [{ model: Role, as: 'roles', attributes: ['name'] }]
       });
-      
+
       return {
         id: newUser.id,
         email: newUser.email,
         status: newUser.status,
-        roles: newUser.roles.map(r => r.name),
+        roles: newUser.roles.map((r) => r.name)
       };
     } catch (error) {
       await transaction.rollback();
@@ -70,37 +73,37 @@ class AuthService {
       where: { email },
       include: [
         { model: Credential, as: 'credential' },
-        { model: Role, as: 'roles', attributes: ['name'] },
-      ],
+        { model: Role, as: 'roles', attributes: ['name'] }
+      ]
     });
-    
+
     if (!user || !user.credential) {
       throw ApiError.unauthorized('Invalid email or password');
     }
-    
+
     if (user.status !== 'active') {
       throw ApiError.forbidden('Account is not active');
     }
-    
+
     // Verify password
     const isValidPassword = await user.credential.verifyPassword(password);
     if (!isValidPassword) {
       throw ApiError.unauthorized('Invalid email or password');
     }
-    
+
     // Generate tokens
     const accessToken = this._generateAccessToken(user);
     const refreshToken = await this._createRefreshToken(user.id, meta);
-    
+
     return {
       user: {
         id: user.id,
         email: user.email,
         status: user.status,
-        roles: user.roles.map(r => r.name),
+        roles: user.roles.map((r) => r.name)
       },
       accessToken,
-      refreshToken: refreshToken.token,
+      refreshToken: refreshToken.token
     };
   }
 
@@ -113,17 +116,19 @@ class AuthService {
   async refreshToken(token, meta = {}) {
     const refreshToken = await RefreshToken.findOne({
       where: { token },
-      include: [{ 
-        model: User, 
-        as: 'user',
-        include: [{ model: Role, as: 'roles', attributes: ['name'] }],
-      }],
+      include: [
+        {
+          model: User,
+          as: 'user',
+          include: [{ model: Role, as: 'roles', attributes: ['name'] }]
+        }
+      ]
     });
-    
+
     if (!refreshToken) {
       throw ApiError.unauthorized('Invalid refresh token');
     }
-    
+
     if (!refreshToken.isActive()) {
       // Token reuse detection - revoke all tokens for this user
       if (refreshToken.revoked) {
@@ -134,19 +139,19 @@ class AuthService {
       }
       throw ApiError.unauthorized('Refresh token is invalid or expired');
     }
-    
+
     const { user } = refreshToken;
     if (user.status !== 'active') {
       throw ApiError.forbidden('Account is not active');
     }
-    
+
     // Rotate refresh token
     const newRefreshToken = await this._rotateRefreshToken(refreshToken, meta);
     const accessToken = this._generateAccessToken(user);
-    
+
     return {
       accessToken,
-      refreshToken: newRefreshToken.token,
+      refreshToken: newRefreshToken.token
     };
   }
 
@@ -156,11 +161,11 @@ class AuthService {
    */
   async logout(token) {
     const refreshToken = await RefreshToken.findOne({ where: { token } });
-    
+
     if (refreshToken && !refreshToken.revoked) {
       await refreshToken.update({
         revoked: true,
-        revokedAt: new Date(),
+        revokedAt: new Date()
       });
     }
   }
@@ -183,19 +188,19 @@ class AuthService {
    */
   async getUserById(userId) {
     const user = await User.findByPk(userId, {
-      include: [{ model: Role, as: 'roles', attributes: ['name'] }],
+      include: [{ model: Role, as: 'roles', attributes: ['name'] }]
     });
-    
+
     if (!user) {
       throw ApiError.notFound('User not found');
     }
-    
+
     return {
       id: user.id,
       email: user.email,
       status: user.status,
-      roles: user.roles.map(r => r.name),
-      createdAt: user.createdAt,
+      roles: user.roles.map((r) => r.name),
+      createdAt: user.createdAt
     };
   }
 
@@ -205,33 +210,31 @@ class AuthService {
     return generateAccessToken({
       sub: user.id,
       email: user.email,
-      roles: user.roles.map(r => r.name),
+      roles: user.roles.map((r) => r.name)
     });
   }
 
   async _createRefreshToken(userId, meta = {}) {
-    const expiresAt = new Date(
-      Date.now() + getExpirationMs(config.jwt.refreshExpiresIn)
-    );
-    
+    const expiresAt = new Date(Date.now() + getExpirationMs(config.jwt.refreshExpiresIn));
+
     return RefreshToken.create({
       userId,
       token: RefreshToken.generateToken(),
       expiresAt,
       userAgent: meta.userAgent,
-      ipAddress: meta.ipAddress,
+      ipAddress: meta.ipAddress
     });
   }
 
   async _rotateRefreshToken(oldToken, meta = {}) {
     const newToken = await this._createRefreshToken(oldToken.userId, meta);
-    
+
     await oldToken.update({
       revoked: true,
       revokedAt: new Date(),
-      replacedByToken: newToken.token,
+      replacedByToken: newToken.token
     });
-    
+
     return newToken;
   }
 }

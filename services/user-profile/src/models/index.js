@@ -10,28 +10,28 @@ const { sequelize } = require('../config/database');
 UserProfile.hasOne(UserPreferences, {
   foreignKey: 'userId',
   as: 'preferences',
-  onDelete: 'CASCADE',
+  onDelete: 'CASCADE'
 });
 
 UserPreferences.belongsTo(UserProfile, {
   foreignKey: 'userId',
-  as: 'profile',
+  as: 'profile'
 });
 
 UserProfile.hasMany(LearningGoal, {
   foreignKey: 'userId',
   as: 'learningGoals',
-  onDelete: 'CASCADE',
+  onDelete: 'CASCADE'
 });
 
 LearningGoal.belongsTo(UserProfile, {
   foreignKey: 'userId',
-  as: 'profile',
+  as: 'profile'
 });
 
 module.exports = {
   sequelize,
   UserProfile,
   UserPreferences,
-  LearningGoal,
+  LearningGoal
 };

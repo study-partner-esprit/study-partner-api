@@ -10,7 +10,7 @@ router.get('/', (req, res) => {
   res.json({
     status: 'healthy',
     service: 'study-service',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -21,7 +21,7 @@ router.get('/ready', async (req, res) => {
       status: 'ready',
       service: 'study-service',
       database: 'connected',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(503).json({
@@ -29,7 +29,7 @@ router.get('/ready', async (req, res) => {
       service: 'study-service',
       database: 'disconnected',
       error: error.message,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   }
 });

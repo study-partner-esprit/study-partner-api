@@ -10,19 +10,19 @@ class GoalsService {
    */
   async getGoals(userId, filters = {}) {
     const where = { userId };
-    
+
     if (filters.status) {
       where.status = filters.status;
     }
-    
+
     const goals = await LearningGoal.findAll({
       where,
       order: [
         ['priority', 'DESC'],
-        ['createdAt', 'DESC'],
-      ],
+        ['createdAt', 'DESC']
+      ]
     });
-    
+
     return goals;
   }
 
@@ -31,13 +31,13 @@ class GoalsService {
    */
   async getGoalById(userId, goalId) {
     const goal = await LearningGoal.findOne({
-      where: { id: goalId, userId },
+      where: { id: goalId, userId }
     });
-    
+
     if (!goal) {
       throw ApiError.notFound('Goal not found');
     }
-    
+
     return goal;
   }
 
@@ -51,9 +51,9 @@ class GoalsService {
       description: data.description,
       category: data.category,
       targetDate: data.targetDate,
-      priority: data.priority || 'medium',
+      priority: data.priority || 'medium'
     });
-    
+
     return goal;
   }
 
@@ -62,25 +62,30 @@ class GoalsService {
    */
   async updateGoal(userId, goalId, data) {
     const goal = await this.getGoalById(userId, goalId);
-    
+
     const allowedFields = [
-      'title', 'description', 'category', 'targetDate',
-      'priority', 'status', 'progressPercent',
+      'title',
+      'description',
+      'category',
+      'targetDate',
+      'priority',
+      'status',
+      'progressPercent'
     ];
-    
+
     const updateData = {};
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
         updateData[field] = data[field];
       }
     }
-    
+
     // Auto-complete if progress reaches 100%
     if (updateData.progressPercent === 100 && goal.status === 'active') {
       updateData.status = 'completed';
       updateData.completedAt = new Date();
     }
-    
+
     await goal.update(updateData);
     return goal;
   }
@@ -98,23 +103,23 @@ class GoalsService {
    */
   async getGoalStats(userId) {
     const goals = await LearningGoal.findAll({ where: { userId } });
-    
+
     const stats = {
       total: goals.length,
-      active: goals.filter(g => g.status === 'active').length,
-      completed: goals.filter(g => g.status === 'completed').length,
-      paused: goals.filter(g => g.status === 'paused').length,
-      abandoned: goals.filter(g => g.status === 'abandoned').length,
-      averageProgress: 0,
+      active: goals.filter((g) => g.status === 'active').length,
+      completed: goals.filter((g) => g.status === 'completed').length,
+      paused: goals.filter((g) => g.status === 'paused').length,
+      abandoned: goals.filter((g) => g.status === 'abandoned').length,
+      averageProgress: 0
     };
-    
-    const activeGoals = goals.filter(g => g.status === 'active');
+
+    const activeGoals = goals.filter((g) => g.status === 'active');
     if (activeGoals.length > 0) {
       stats.averageProgress = Math.round(
         activeGoals.reduce((sum, g) => sum + g.progressPercent, 0) / activeGoals.length
       );
     }
-    
+
     return stats;
   }
 }

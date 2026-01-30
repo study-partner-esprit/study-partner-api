@@ -13,11 +13,11 @@ class AuthController {
     try {
       const { email, password } = req.body;
       const user = await authService.register({ email, password });
-      
+
       res.status(201).json({
         success: true,
         message: 'Registration successful',
-        data: { user },
+        data: { user }
       });
     } catch (error) {
       next(error);
@@ -32,22 +32,22 @@ class AuthController {
       const { email, password } = req.body;
       const meta = {
         userAgent: req.get('User-Agent'),
-        ipAddress: req.ip,
+        ipAddress: req.ip
       };
-      
+
       const { user, accessToken, refreshToken } = await authService.login(
         { email, password },
         meta
       );
-      
+
       res.json({
         success: true,
         message: 'Login successful',
         data: {
           user,
           accessToken,
-          refreshToken,
-        },
+          refreshToken
+        }
       });
     } catch (error) {
       next(error);
@@ -60,21 +60,21 @@ class AuthController {
   async refreshToken(req, res, next) {
     try {
       const { refreshToken } = req.body;
-      
+
       if (!refreshToken) {
         throw ApiError.badRequest('Refresh token is required');
       }
-      
+
       const meta = {
         userAgent: req.get('User-Agent'),
-        ipAddress: req.ip,
+        ipAddress: req.ip
       };
-      
+
       const tokens = await authService.refreshToken(refreshToken, meta);
-      
+
       res.json({
         success: true,
-        data: tokens,
+        data: tokens
       });
     } catch (error) {
       next(error);
@@ -87,14 +87,14 @@ class AuthController {
   async logout(req, res, next) {
     try {
       const { refreshToken } = req.body;
-      
+
       if (refreshToken) {
         await authService.logout(refreshToken);
       }
-      
+
       res.json({
         success: true,
-        message: 'Logged out successfully',
+        message: 'Logged out successfully'
       });
     } catch (error) {
       next(error);
@@ -108,10 +108,10 @@ class AuthController {
   async logoutAll(req, res, next) {
     try {
       await authService.logoutAll(req.user.sub);
-      
+
       res.json({
         success: true,
-        message: 'Logged out from all devices',
+        message: 'Logged out from all devices'
       });
     } catch (error) {
       next(error);
@@ -125,10 +125,10 @@ class AuthController {
   async me(req, res, next) {
     try {
       const user = await authService.getUserById(req.user.sub);
-      
+
       res.json({
         success: true,
-        data: { user },
+        data: { user }
       });
     } catch (error) {
       next(error);

@@ -11,10 +11,10 @@ class RoleController {
   async getAllRoles(req, res, next) {
     try {
       const roles = await roleService.getAllRoles();
-      
+
       res.json({
         success: true,
-        data: { roles },
+        data: { roles }
       });
     } catch (error) {
       next(error);
@@ -29,11 +29,11 @@ class RoleController {
     try {
       const { name, description } = req.body;
       const role = await roleService.createRole({ name, description });
-      
+
       res.status(201).json({
         success: true,
         message: 'Role created successfully',
-        data: { role },
+        data: { role }
       });
     } catch (error) {
       next(error);
@@ -48,10 +48,10 @@ class RoleController {
     try {
       const { roleId } = req.params;
       await roleService.deleteRole(roleId);
-      
+
       res.json({
         success: true,
-        message: 'Role deleted successfully',
+        message: 'Role deleted successfully'
       });
     } catch (error) {
       next(error);
@@ -65,10 +65,10 @@ class RoleController {
     try {
       const { userId } = req.params;
       const roles = await roleService.getUserRoles(userId);
-      
+
       res.json({
         success: true,
-        data: { roles },
+        data: { roles }
       });
     } catch (error) {
       next(error);
@@ -83,13 +83,13 @@ class RoleController {
     try {
       const { userId } = req.params;
       const { roleId } = req.body;
-      
+
       const assignment = await roleService.assignRole(userId, roleId);
-      
+
       res.status(201).json({
         success: true,
         message: 'Role assigned successfully',
-        data: assignment,
+        data: assignment
       });
     } catch (error) {
       next(error);
@@ -104,10 +104,10 @@ class RoleController {
     try {
       const { userId, roleId } = req.params;
       await roleService.removeRole(userId, roleId);
-      
+
       res.json({
         success: true,
-        message: 'Role removed successfully',
+        message: 'Role removed successfully'
       });
     } catch (error) {
       next(error);

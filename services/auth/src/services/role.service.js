@@ -13,7 +13,7 @@ class RoleService {
   async getAllRoles() {
     const roles = await Role.findAll({
       attributes: ['id', 'name', 'description'],
-      order: [['name', 'ASC']],
+      order: [['name', 'ASC']]
     });
     return roles;
   }
@@ -28,12 +28,12 @@ class RoleService {
     if (existingRole) {
       throw ApiError.conflict('Role already exists');
     }
-    
+
     const role = await Role.create({ name, description });
     return {
       id: role.id,
       name: role.name,
-      description: role.description,
+      description: role.description
     };
   }
 
@@ -46,12 +46,12 @@ class RoleService {
     if (!role) {
       throw ApiError.notFound('Role not found');
     }
-    
+
     // Prevent deletion of default roles
     if (['student', 'admin'].includes(role.name)) {
       throw ApiError.badRequest('Cannot delete default roles');
     }
-    
+
     await role.destroy();
   }
 
@@ -62,13 +62,13 @@ class RoleService {
    */
   async getUserRoles(userId) {
     const user = await User.findByPk(userId, {
-      include: [{ model: Role, as: 'roles', attributes: ['id', 'name', 'description'] }],
+      include: [{ model: Role, as: 'roles', attributes: ['id', 'name', 'description'] }]
     });
-    
+
     if (!user) {
       throw ApiError.notFound('User not found');
     }
-    
+
     return user.roles;
   }
 
@@ -83,28 +83,28 @@ class RoleService {
     if (!user) {
       throw ApiError.notFound('User not found');
     }
-    
+
     const role = await Role.findByPk(roleId);
     if (!role) {
       throw ApiError.notFound('Role not found');
     }
-    
+
     // Check if already assigned
     const existing = await UserRole.findOne({
-      where: { userId, roleId },
+      where: { userId, roleId }
     });
-    
+
     if (existing) {
       throw ApiError.conflict('Role already assigned to user');
     }
-    
+
     await user.addRole(role);
-    
+
     return {
       userId,
       roleId,
       roleName: role.name,
-      assignedAt: new Date(),
+      assignedAt: new Date()
     };
   }
 
@@ -118,12 +118,12 @@ class RoleService {
     if (!user) {
       throw ApiError.notFound('User not found');
     }
-    
+
     const role = await Role.findByPk(roleId);
     if (!role) {
       throw ApiError.notFound('Role not found');
     }
-    
+
     await user.removeRole(role);
   }
 
@@ -134,13 +134,13 @@ class RoleService {
     const defaultRoles = [
       { name: 'student', description: 'Regular student user' },
       { name: 'admin', description: 'Administrator with full access' },
-      { name: 'moderator', description: 'Content moderator' },
+      { name: 'moderator', description: 'Content moderator' }
     ];
-    
+
     for (const roleData of defaultRoles) {
       await Role.findOrCreate({
         where: { name: roleData.name },
-        defaults: roleData,
+        defaults: roleData
       });
     }
   }

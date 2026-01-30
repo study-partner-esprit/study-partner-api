@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
   res.json({
     status: 'healthy',
     service: 'auth-service',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -27,12 +27,12 @@ router.get('/', (req, res) => {
 router.get('/ready', async (req, res) => {
   try {
     await sequelize.authenticate();
-    
+
     res.json({
       status: 'ready',
       service: 'auth-service',
       database: 'connected',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(503).json({
@@ -40,7 +40,7 @@ router.get('/ready', async (req, res) => {
       service: 'auth-service',
       database: 'disconnected',
       error: error.message,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   }
 });
