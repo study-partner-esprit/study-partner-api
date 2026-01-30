@@ -1,42 +1,179 @@
 version: '3.8'
 
 services:
-  # API Service
-  api:
+  # ======================
+  # MICROSERVICES
+  # ======================
+  
+  # Auth Service (Port 3001)
+  auth-service:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: study-partner-api
+      dockerfile: services/auth/Dockerfile
+    container_name: study-partner-auth
     ports:
-      - "8080:8080"
+      - "3001:3001"
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/study_partner
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=your-secret-key
+      - NODE_ENV=development
+      - PORT=3001
+      - DB_HOST=postgres-auth
+      - DB_PORT=5432
+      - DB_NAME=study_partner_auth
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
+      - JWT_EXPIRES_IN=15m
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - BCRYPT_ROUNDS=12
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
     depends_on:
-      - postgres
-      - redis
+      postgres-auth:
+        condition: service_healthy
     networks:
       - study-partner-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # PostgreSQL Database
-  postgres:
+  # User Profile Service (Port 3002)
+  user-profile-service:
+    build:
+      context: .
+      dockerfile: services/user-profile/Dockerfile
+    container_name: study-partner-user-profile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DB_HOST=postgres-user-profile
+      - DB_PORT=5432
+      - DB_NAME=study_partner_user_profile
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+    depends_on:
+      postgres-user-profile:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - study-partner-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Study Service (Port 3003)
+  study-service:
+    build:
+      context: .
+      dockerfile: services/study/Dockerfile
+    container_name: study-partner-study
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DB_HOST=postgres-study
+      - DB_PORT=5432
+      - DB_NAME=study_partner_study
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+    depends_on:
+      postgres-study:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - study-partner-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ======================
+  # DATABASES
+  # ======================
+  
+  # Auth Database
+  postgres-auth:
     image: postgres:16-alpine
-    container_name: study-partner-db
+    container_name: study-partner-db-auth
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=study_partner
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=study_partner_auth
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_auth_data:/var/lib/postgresql/data
     networks:
       - study-partner-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # User Profile Database
+  postgres-user-profile:
+    image: postgres:16-alpine
+    container_name: study-partner-db-user-profile
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=study_partner_user_profile
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_user_profile_data:/var/lib/postgresql/data
+    networks:
+      - study-partner-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_user_profile"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Study Database
+  postgres-study:
+    image: postgres:16-alpine
+    container_name: study-partner-db-study
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=study_partner_study
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_study_data:/var/lib/postgresql/data
+    networks:
+      - study-partner-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_study"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ======================
+  # INFRASTRUCTURE
+  # ======================
+  
   # Redis Cache
   redis:
     image: redis:7-alpine
@@ -48,24 +185,31 @@ services:
     networks:
       - study-partner-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # pgAdmin (optional)
+  # pgAdmin (Development only)
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: study-partner-pgadmin
+    profiles:
+      - dev
     environment:
       - PGADMIN_DEFAULT_EMAIL=admin@studypartner.com
       - PGADMIN_DEFAULT_PASSWORD=admin
     ports:
       - "5050:80"
-    depends_on:
-      - postgres
     networks:
       - study-partner-network
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_auth_data:
+  postgres_user_profile_data:
+  postgres_study_data:
   redis_data:
 
 networks:

@@ -1,0 +1,14 @@
+{
+  "name": "@study-partner/shared-utils",
+  "version": "1.0.0",
+  "description": "Shared utilities for Study Partner microservices",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "dependencies": {
+    "winston": "^3.11.0",
+    "joi": "^17.11.0",
+    "uuid": "^9.0.1"
+  }
+}
