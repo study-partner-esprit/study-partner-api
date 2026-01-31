@@ -15,6 +15,7 @@
     "dev:notification": "npm run dev -w @study-partner/notification-service",
     "dev:analytics": "npm run dev -w @study-partner/analytics-service",
     "start": "npm run start --workspaces --if-present",
+    "build": "echo 'No build step required for Node.js services' && exit 0",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "jest --coverage --passWithNoTests",
     "test:integration": "echo 'Integration tests not implemented yet' && exit 0",
