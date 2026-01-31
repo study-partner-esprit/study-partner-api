@@ -17,6 +17,7 @@
     "start": "npm run start --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "jest --coverage --passWithNoTests",
+    "test:integration": "echo 'Integration tests not implemented yet' && exit 0",
     "test:security": "npm audit --audit-level=high || true",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write \"**/*.{js,json,md}\"",
