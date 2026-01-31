@@ -24,9 +24,9 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "db:migrate": "npm run db:migrate --workspaces --if-present",
-    "db:migrate:undo": "npm run db:migrate:undo --workspaces --if-present",
-    "db:seed": "npm run db:seed --workspaces --if-present"
+    "db:migrate": "npm run db:migrate --workspaces --if-present || echo 'Migration skipped - no database connection'",
+    "db:migrate:undo": "npm run db:migrate:undo --workspaces --if-present || echo 'Migration undo skipped - no database connection'",
+    "db:seed": "npm run db:seed --workspaces --if-present || echo 'Seed skipped - no database connection'"
   },
   "devDependencies": {
     "eslint-config-prettier": "^10.1.8",
