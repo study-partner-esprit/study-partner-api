@@ -1,0 +1,22 @@
+{
+  "name": "@study-partner/shared",
+  "version": "1.0.0",
+  "description": "Shared utilities for Study Partner backend services",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["study-partner", "shared", "utilities"],
+  "author": "Study Partner Team",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "winston": "^3.11.0",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5",
+    "uuid": "^9.0.1"
+  }
+}

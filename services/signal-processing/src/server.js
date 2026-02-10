@@ -3,16 +3,9 @@ const app = require('./app');
 // const { connectDatabase, logger } = require('@study-partner/shared');
 
 // Temporary implementations until shared package is fixed
-const mongoose = require('mongoose');
-
 const connectDatabase = async (uri) => {
-  try {
-    await mongoose.connect(uri);
-    console.log('Connected to MongoDB');
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
-  }
+  console.log('Database connection not implemented yet');
+  return true;
 };
 
 const logger = {
@@ -21,7 +14,7 @@ const logger = {
   warn: (msg) => console.warn(`[WARN] ${msg}`)
 };
 
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 8005;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongo:27017/study_partner';
 
 async function startServer() {
@@ -32,11 +25,11 @@ async function startServer() {
 
     // Start server
     app.listen(PORT, () => {
-      logger.info(`Auth service listening on port ${PORT}`);
+      logger.info(`Signal Processing service listening on port ${PORT}`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
     });
   } catch (error) {
-    logger.error('Failed to start auth service:', error);
+    logger.error('Failed to start signal processing service:', error);
     process.exit(1);
   }
 }

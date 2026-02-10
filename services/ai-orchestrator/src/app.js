@@ -7,7 +7,7 @@ const express = require('express');
 //   healthCheck,
 //   authenticate
 // } = require('@study-partner/shared');
-const profileRoutes = require('./routes/profile');
+const aiRoutes = require('./routes/ai');
 
 // Temporary middleware until shared package is fixed
 const corsMiddleware = (req, res, next) => {
@@ -32,25 +32,8 @@ const errorHandler = (err, req, res, next) => {
 };
 
 const rateLimiter = (req, res, next) => next(); // No rate limiting for now
-const healthCheck = (req, res) => res.json({ status: 'ok', service: 'user-profile' });
-
-// Temporary JWT authentication until shared package is fixed
-const jwt = require('jsonwebtoken');
-const authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  
-  const token = authHeader.substring(7);
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
+const healthCheck = (req, res) => res.json({ status: 'ok', service: 'ai-orchestrator' });
+const authenticate = (req, res, next) => next(); // No auth for now
 
 const app = express();
 
@@ -66,8 +49,8 @@ app.use(rateLimiter);
 // Health check
 app.get('/api/v1/health', healthCheck);
 
-// Protected profile routes (require authentication)
-app.use('/api/v1/users/profile', authenticate, profileRoutes);
+// Protected AI routes (require authentication)
+app.use('/api/v1/ai', authenticate, aiRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

@@ -1,217 +1,173 @@
-version: '3.8'
-
 services:
-  # ======================
-  # MICROSERVICES
-  # ======================
-  
-  # Auth Service (Port 3001)
+  # MongoDB Database
+  mongo:
+    image: mongo:7.0
+    container_name: study-partner-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - study-partner-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway - Port 3000
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./services/api-gateway/Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
+      - STUDY_SERVICE_URL=http://study-service:3003
+      - AI_ORCHESTRATOR_SERVICE_URL=http://ai-orchestrator-service:3004
+      - SIGNAL_PROCESSING_SERVICE_URL=http://signal-processing-service:3005
+      - ANALYTICS_SERVICE_URL=http://analytics-service:3006
+    depends_on:
+      - auth-service
+      - user-profile-service
+      - study-service
+      - ai-orchestrator-service
+      - signal-processing-service
+      - analytics-service
+    networks:
+      - study-partner-network
+
+  # Auth Service - Port 3001
   auth-service:
     build:
       context: .
-      dockerfile: services/auth/Dockerfile
-    container_name: study-partner-auth
+      dockerfile: ./services/auth/Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - DB_HOST=postgres-auth
-      - DB_PORT=5432
-      - DB_NAME=study_partner_auth
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
-      - JWT_EXPIRES_IN=15m
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - BCRYPT_ROUNDS=12
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=1h
     depends_on:
-      postgres-auth:
+      mongo:
         condition: service_healthy
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # User Profile Service (Port 3002)
+  # User Profile Service - Port 3002
   user-profile-service:
     build:
       context: .
-      dockerfile: services/user-profile/Dockerfile
-    container_name: study-partner-user-profile
+      dockerfile: ./services/user-profile/Dockerfile
+    container_name: user-profile-service
+    restart: unless-stopped
     ports:
       - "3002:3002"
     environment:
       - NODE_ENV=development
       - PORT=3002
-      - DB_HOST=postgres-user-profile
-      - DB_PORT=5432
-      - DB_NAME=study_partner_user_profile
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
-      - AUTH_SERVICE_URL=http://auth-service:3001
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
     depends_on:
-      postgres-user-profile:
-        condition: service_healthy
-      auth-service:
+      mongo:
         condition: service_healthy
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # Study Service (Port 3003)
+  # Study Management Service - Port 3003
   study-service:
     build:
       context: .
-      dockerfile: services/study/Dockerfile
-    container_name: study-partner-study
+      dockerfile: ./services/study/Dockerfile
+    container_name: study-service
+    restart: unless-stopped
     ports:
       - "3003:3003"
     environment:
       - NODE_ENV=development
       - PORT=3003
-      - DB_HOST=postgres-study
-      - DB_PORT=5432
-      - DB_NAME=study_partner_study
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key-change-in-production}
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
     depends_on:
-      postgres-study:
-        condition: service_healthy
-      auth-service:
+      mongo:
         condition: service_healthy
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # ======================
-  # DATABASES
-  # ======================
-  
-  # Auth Database
-  postgres-auth:
-    image: postgres:16-alpine
-    container_name: study-partner-db-auth
+  # AI Orchestrator Service - Port 3004
+  ai-orchestrator-service:
+    build:
+      context: .
+      dockerfile: ./services/ai-orchestrator/Dockerfile
+    container_name: ai-orchestrator-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=study_partner_auth
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_auth_data:/var/lib/postgresql/data
+      - NODE_ENV=development
+      - PORT=3004
+      - AI_SERVICE_URL=http://study-partner-ai:5000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_auth"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # User Profile Database
-  postgres-user-profile:
-    image: postgres:16-alpine
-    container_name: study-partner-db-user-profile
+  # Signal Processing Service - Port 3005
+  signal-processing-service:
+    build:
+      context: .
+      dockerfile: ./services/signal-processing/Dockerfile
+    container_name: signal-processing-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=study_partner_user_profile
-    ports:
-      - "5434:5432"
-    volumes:
-      - postgres_user_profile_data:/var/lib/postgresql/data
+      - NODE_ENV=development
+      - PORT=3005
+      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      mongo:
+        condition: service_healthy
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_user_profile"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # Study Database
-  postgres-study:
-    image: postgres:16-alpine
-    container_name: study-partner-db-study
+  # Analytics Service - Port 3006
+  analytics-service:
+    build:
+      context: .
+      dockerfile: ./services/analytics/Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=study_partner_study
-    ports:
-      - "5435:5432"
-    volumes:
-      - postgres_study_data:/var/lib/postgresql/data
+      - NODE_ENV=development
+      - PORT=3006
+      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      mongo:
+        condition: service_healthy
     networks:
       - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d study_partner_study"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ======================
-  # INFRASTRUCTURE
-  # ======================
-  
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: study-partner-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - study-partner-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # pgAdmin (Development only)
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: study-partner-pgadmin
-    profiles:
-      - dev
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@studypartner.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
-    ports:
-      - "5050:80"
-    networks:
-      - study-partner-network
-    restart: unless-stopped
-
-volumes:
-  postgres_auth_data:
-  postgres_user_profile_data:
-  postgres_study_data:
-  redis_data:
 
 networks:
   study-partner-network:
     driver: bridge
+
+volumes:
+  mongo-data:

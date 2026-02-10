@@ -1,45 +1,50 @@
-/**
- * Study Service Entry Point
- */
 require('dotenv').config();
-
 const app = require('./app');
-const config = require('./config');
-const { sequelize } = require('./config/database');
-const { createLogger } = require('@study-partner/shared-utils');
+// const { connectDatabase, logger } = require('@study-partner/shared');
 
-const logger = createLogger('study-service');
+// Temporary implementations until shared package is fixed
+const mongoose = require('mongoose');
+
+const connectDatabase = async (uri) => {
+  try {
+    await mongoose.connect(uri);
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+};
+
+const logger = {
+  info: (msg) => console.log(`[INFO] ${msg}`),
+  error: (msg) => console.error(`[ERROR] ${msg}`),
+  warn: (msg) => console.warn(`[WARN] ${msg}`)
+};
+
+const PORT = process.env.PORT || 8003;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongo:27017/study_partner';
 
 async function startServer() {
   try {
-    await sequelize.authenticate();
-    logger.info('Database connection established');
+    // Connect to MongoDB
+    await connectDatabase(MONGODB_URI);
+    logger.info('Connected to MongoDB');
 
-    if (config.env === 'development') {
-      await sequelize.sync({ alter: true });
-      logger.info('Database models synchronized');
-    }
-
-    const server = app.listen(config.port, () => {
-      logger.info(`Study service running on port ${config.port}`);
+    // Start server
+    app.listen(PORT, () => {
+      logger.info(`Study Management service listening on port ${PORT}`);
+      logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
     });
-
-    const gracefulShutdown = async (signal) => {
-      logger.info(`${signal} received. Starting graceful shutdown...`);
-      server.close(async () => {
-        await sequelize.close();
-        logger.info('Database connection closed');
-        process.exit(0);
-      });
-      setTimeout(() => process.exit(1), 30000);
-    };
-
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('Failed to start study management service:', error);
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
 
 startServer();

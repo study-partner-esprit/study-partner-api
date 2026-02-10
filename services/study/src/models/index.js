@@ -1,89 +1,120 @@
-/**
- * Models Index - Study Service
- */
-const Subject = require('./subject.model');
-const Topic = require('./topic.model');
-const StudySession = require('./studySession.model');
-const Task = require('./task.model');
-const StudyMaterial = require('./studyMaterial.model');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
 
-// Subject -> Topics (One to Many)
-Subject.hasMany(Topic, {
-  foreignKey: 'subjectId',
-  as: 'topics',
-  onDelete: 'CASCADE'
-});
-Topic.belongsTo(Subject, {
-  foreignKey: 'subjectId',
-  as: 'subject'
-});
-
-// Subject -> Study Sessions
-Subject.hasMany(StudySession, {
-  foreignKey: 'subjectId',
-  as: 'sessions'
-});
-StudySession.belongsTo(Subject, {
-  foreignKey: 'subjectId',
-  as: 'subject'
-});
-
-// Topic -> Study Sessions
-Topic.hasMany(StudySession, {
-  foreignKey: 'topicId',
-  as: 'sessions'
-});
-StudySession.belongsTo(Topic, {
-  foreignKey: 'topicId',
-  as: 'topic'
+const studySessionSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  taskId: {
+    type: String
+  },
+  topicId: {
+    type: String
+  },
+  duration: {
+    type: Number, // in minutes
+    required: true
+  },
+  focusScore: {
+    type: Number,
+    min: 0,
+    max: 100
+  },
+  completedAt: {
+    type: Date,
+    default: Date.now
+  },
+  notes: {
+    type: String,
+    maxlength: 1000
+  }
+}, {
+  timestamps: true
 });
 
-// Subject -> Tasks
-Subject.hasMany(Task, {
-  foreignKey: 'subjectId',
-  as: 'tasks'
-});
-Task.belongsTo(Subject, {
-  foreignKey: 'subjectId',
-  as: 'subject'
+const taskSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  title: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String
+  },
+  topicId: {
+    type: String
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium'
+  },
+  estimatedTime: {
+    type: Number // in minutes
+  },
+  actualTime: {
+    type: Number,
+    default: 0
+  },
+  status: {
+    type: String,
+    enum: ['todo', 'in-progress', 'completed', 'cancelled'],
+    default: 'todo'
+  },
+  dueDate: {
+    type: Date
+  },
+  completedAt: {
+    type: Date
+  },
+  tags: [{
+    type: String
+  }]
+}, {
+  timestamps: true
 });
 
-// Topic -> Tasks
-Topic.hasMany(Task, {
-  foreignKey: 'topicId',
-  as: 'tasks'
-});
-Task.belongsTo(Topic, {
-  foreignKey: 'topicId',
-  as: 'topic'
+const topicSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String
+  },
+  category: {
+    type: String
+  },
+  color: {
+    type: String,
+    default: '#ff4655'
+  },
+  totalStudyTime: {
+    type: Number,
+    default: 0
+  },
+  mastery: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 0
+  }
+}, {
+  timestamps: true
 });
 
-// Subject -> Study Materials
-Subject.hasMany(StudyMaterial, {
-  foreignKey: 'subjectId',
-  as: 'materials'
-});
-StudyMaterial.belongsTo(Subject, {
-  foreignKey: 'subjectId',
-  as: 'subject'
-});
+const StudySession = mongoose.model('StudySession', studySessionSchema);
+const Task = mongoose.model('Task', taskSchema);
+const Topic = mongoose.model('Topic', topicSchema);
 
-// Topic -> Study Materials
-Topic.hasMany(StudyMaterial, {
-  foreignKey: 'topicId',
-  as: 'materials'
-});
-StudyMaterial.belongsTo(Topic, {
-  foreignKey: 'topicId',
-  as: 'topic'
-});
-
-module.exports = {
-  sequelize,
-  Subject,
-  Topic,
-  StudySession,
-  Task,
-  StudyMaterial
-};
+module.exports = { StudySession, Task, Topic };

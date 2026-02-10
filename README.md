@@ -1,320 +1,192 @@
-# Study Partner API - Backend Microservices
+# Study Partner API - Microservices Backend
 
-A scalable microservices architecture for the Study Partner application built with Express.js.
+Express.js microservices architecture for the Study Partner platform.
 
-## 🏗️ Architecture Overview
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        API Gateway                               │
-│                      (Future: Kong/Nginx)                        │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-        ▼                     ▼                     ▼
-┌───────────────┐   ┌─────────────────┐   ┌───────────────┐
-│ Auth Service  │   │  User Profile   │   │Study Service  │
-│   (3001)      │   │   (3002)        │   │   (3003)      │
-├───────────────┤   ├─────────────────┤   ├───────────────┤
-│  PostgreSQL   │   │   PostgreSQL    │   │  PostgreSQL   │
-└───────────────┘   └─────────────────┘   └───────────────┘
-```
+### Services
 
-## 📦 Services
+1. **API Gateway** (Port 8000) - Request routing and load balancing
+2. **Auth Service** (Port 8001) - Authentication and authorization (JWT, RBAC)
+3. **User Profile Service** (Port 8002) - User settings, preferences, goals, stats
+4. **Study Management Service** (Port 8003) - Tasks, topics, study sessions
+5. **AI Orchestrator Service** (Port 8004) - Integrates Course Ingestion, Planner, Scheduler, Coach agents
+6. **Signal Processing Service** (Port 8005) - Focus tracking, eye tracking, biometric analysis
+7. **Analytics Service** (Port 8006) - Data analytics, reporting, insights
 
-| Service         | Port | Database             | Description                                  |
-| --------------- | ---- | -------------------- | -------------------------------------------- |
-| Auth Service    | 3001 | PostgreSQL           | JWT authentication, RBAC, user credentials   |
-| User Profile    | 3002 | PostgreSQL           | User profiles, preferences, learning goals   |
-| Study Service   | 3003 | PostgreSQL           | Subjects, topics, sessions, tasks, materials |
-| AI Orchestrator | 3004 | PostgreSQL + MongoDB | AI agent coordination (planned)              |
-| Notification    | 3005 | PostgreSQL           | Email, push notifications (planned)          |
-| Analytics       | 3006 | PostgreSQL + MongoDB | Learning analytics (planned)                 |
+### Tech Stack
 
-## 🚀 Quick Start
+- **Runtime**: Node.js with Express.js (JavaScript)
+- **Database**: MongoDB with Mongoose ODM
+- **Authentication**: JWT with bcryptjs
+- **Logging**: Winston
+- **Rate Limiting**: express-rate-limit
+- **Orchestration**: Docker + docker-compose
+
+## Getting Started
 
 ### Prerequisites
 
-- Node.js >= 20.0.0
-- pnpm (recommended) or npm >= 10.0.0
-- Docker & Docker Compose
-- PostgreSQL 16+
+- Node.js 18+
+- Docker and Docker Compose
+- npm or pnpm
 
 ### Installation
 
+1. Install shared dependencies:
 ```bash
-# Install pnpm if not installed
-npm install -g pnpm
-
-# Install all dependencies
-pnpm install
-
-# Copy environment files for each service
-cp services/auth/.env.example services/auth/.env
-cp services/user-profile/.env.example services/user-profile/.env
-cp services/study/.env.example services/study/.env
-
-# Start all services in development
-pnpm run dev:auth &
-pnpm run dev:user &
-pnpm run dev:study &
+cd shared
+npm install
+cd ..
 ```
 
-### Using Docker Compose
-
+2. Install service dependencies:
 ```bash
-# Start all services with databases
-docker-compose up -d
-
-# Start with pgAdmin for database management
-docker-compose --profile dev up -d
-
-# View logs
-docker-compose logs -f auth-service
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (⚠️ destroys data)
-docker-compose down -v
+# Install for each service
+cd services/api-gateway && npm install && cd ../..
+cd services/auth && npm install && cd ../..
+cd services/user-profile && npm install && cd ../..
+cd services/study && npm install && cd ../..
+cd services/ai-orchestrator && npm install && cd ../..
+cd services/signal-processing && npm install && cd ../..
+cd services/analytics && npm install && cd ../..
 ```
 
-## 📁 Project Structure
+### Running with Docker Compose
 
-```
-study-partner-api/
-├── services/
-│   ├── auth/                     # Auth & Identity Service
-│   │   ├── src/
-│   │   │   ├── config/           # Configuration
-│   │   │   ├── controllers/      # Route handlers
-│   │   │   ├── middlewares/      # Auth, RBAC, validation
-│   │   │   ├── models/           # Sequelize models
-│   │   │   ├── routes/           # Express routes
-│   │   │   ├── services/         # Business logic
-│   │   │   ├── utils/            # JWT, password utilities
-│   │   │   ├── app.js            # Express app
-│   │   │   └── server.js         # Entry point
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── user-profile/             # User Profile Service
-│   │   └── (same structure)
-│   │
-│   └── study/                    # Study Management Service
-│       └── (same structure)
-│
-├── shared/
-│   └── utils/                    # Shared utilities
-│       ├── logger.js             # Winston logger
-│       ├── errors.js             # Error classes
-│       └── validation.js         # Joi validation
-│
-├── docker-compose.yml
-├── pnpm-workspace.yaml
-└── package.json
-```
-
-## 🔌 API Endpoints
-
-### Auth Service (Port 3001)
-
-| Method | Endpoint               | Description                   |
-| ------ | ---------------------- | ----------------------------- |
-| POST   | `/auth/register`       | Register new user             |
-| POST   | `/auth/login`          | Login, get tokens             |
-| POST   | `/auth/refresh`        | Refresh access token          |
-| POST   | `/auth/logout`         | Logout (revoke refresh token) |
-| POST   | `/auth/logout-all`     | Logout from all devices       |
-| GET    | `/auth/me`             | Get current user info         |
-| GET    | `/roles`               | Get all roles                 |
-| POST   | `/roles`               | Create role (admin)           |
-| GET    | `/users/:userId/roles` | Get user roles                |
-| POST   | `/users/:userId/roles` | Assign role (admin)           |
-
-### User Profile Service (Port 3002)
-
-| Method | Endpoint                       | Description              |
-| ------ | ------------------------------ | ------------------------ |
-| GET    | `/profile`                     | Get user profile         |
-| PUT    | `/profile`                     | Update profile           |
-| POST   | `/profile/onboarding/complete` | Mark onboarding complete |
-| GET    | `/preferences`                 | Get preferences          |
-| PUT    | `/preferences`                 | Update preferences       |
-| POST   | `/preferences/reset`           | Reset to defaults        |
-| GET    | `/goals`                       | List learning goals      |
-| POST   | `/goals`                       | Create goal              |
-| PUT    | `/goals/:goalId`               | Update goal              |
-| DELETE | `/goals/:goalId`               | Delete goal              |
-
-### Study Service (Port 3003)
-
-| Method | Endpoint              | Description         |
-| ------ | --------------------- | ------------------- |
-| GET    | `/subjects`           | List subjects       |
-| POST   | `/subjects`           | Create subject      |
-| GET    | `/subjects/:id/stats` | Get subject stats   |
-| GET    | `/sessions`           | List study sessions |
-| POST   | `/sessions`           | Create session      |
-| POST   | `/sessions/:id/start` | Start session       |
-| POST   | `/sessions/:id/end`   | End session         |
-| GET    | `/sessions/active`    | Get active session  |
-| GET    | `/tasks`              | List tasks          |
-| POST   | `/tasks`              | Create task         |
-| POST   | `/tasks/:id/complete` | Complete task       |
-| GET    | `/tasks/due-soon`     | Get tasks due soon  |
-| GET    | `/tasks/overdue`      | Get overdue tasks   |
-
-### Health Checks (All Services)
-
-| Method | Endpoint        | Description             |
-| ------ | --------------- | ----------------------- |
-| GET    | `/health`       | Basic health check      |
-| GET    | `/health/ready` | Readiness (includes DB) |
-
-## 🔐 Authentication
-
-All protected endpoints require a Bearer token:
-
+Start all services:
 ```bash
-# Login to get tokens
-curl -X POST http://localhost:3001/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "password123"}'
-
-# Use access token for requests
-curl http://localhost:3002/profile \
-  -H "Authorization: Bearer <access_token>"
-
-# Refresh token when expired
-curl -X POST http://localhost:3001/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refreshToken": "<refresh_token>"}'
+cd /home/vanitas/Desktop/study-partner
+docker-compose up
 ```
 
-## 🧪 Testing
-
+Start specific services:
 ```bash
-# Run all tests
-pnpm test
-
-# Run tests for specific service
-pnpm test -w @study-partner/auth-service
-
-# Run with coverage
-pnpm test -- --coverage
+docker-compose up mongo api-gateway auth-service
 ```
 
-## 🔧 Environment Variables
+### Running Locally (Development)
 
-Each service has its own `.env` file. Key variables:
-
+1. Start MongoDB:
 ```bash
-# Common
-NODE_ENV=development
-JWT_SECRET=your-super-secret-key  # Must be same across services
+docker-compose up mongo
+```
+
+2. Run individual services:
+```bash
+# API Gateway
+cd services/api-gateway
+npm run dev
 
 # Auth Service
-PORT=3001
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=study_partner_auth
-DB_USER=postgres
-DB_PASSWORD=password
-BCRYPT_ROUNDS=12
+cd services/auth
+npm run dev
 
-# User Profile Service
-PORT=3002
-DB_NAME=study_partner_user_profile
-AUTH_SERVICE_URL=http://localhost:3001
-
-# Study Service
-PORT=3003
-DB_NAME=study_partner_study
+# ... repeat for other services
 ```
 
-## 📊 Database Schema
+### Environment Variables
+
+Create `.env` files in each service directory:
+
+```env
+# Common variables for all services
+PORT=800X
+MONGODB_URI=mongodb://admin:admin123@localhost:27017/study_partner
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+NODE_ENV=development
+
+# AI Orchestrator specific
+AI_SERVICE_URL=http://localhost:5000
+```
+
+## API Endpoints
+
+### API Gateway
+All requests go through the gateway at `http://localhost:8000`
 
 ### Auth Service
-
-- `users` - User accounts (id, email, status)
-- `credentials` - Password storage (hashed)
-- `roles` - Role definitions
-- `user_roles` - User-role assignments
-- `refresh_tokens` - Token management
+- `POST /api/v1/auth/register` - Register new user
+- `POST /api/v1/auth/login` - Login user
+- `GET /api/v1/auth/me` - Get current user (protected)
 
 ### User Profile Service
+- `GET /api/v1/users/profile` - Get user profile
+- `PUT /api/v1/users/profile` - Update profile
+- `GET /api/v1/users/profile/stats` - Get user stats
+- `GET /api/v1/users/profile/goals` - Get user goals
+- `POST /api/v1/users/profile/goals` - Add new goal
 
-- `user_profiles` - Profile information
-- `user_preferences` - App settings
-- `learning_goals` - User goals
+### Study Management Service
+- `GET /api/v1/study/tasks` - Get all tasks
+- `POST /api/v1/study/tasks` - Create task
+- `PUT /api/v1/study/tasks/:id` - Update task
+- `DELETE /api/v1/study/tasks/:id` - Delete task
+- `GET /api/v1/study/topics` - Get all topics
+- `POST /api/v1/study/topics` - Create topic
+- `GET /api/v1/study/sessions` - Get study sessions
+- `POST /api/v1/study/sessions` - Log study session
 
-### Study Service
+### AI Orchestrator Service
+- `POST /api/v1/ai/ingest` - Ingest course content
+- `POST /api/v1/ai/plan` - Generate study plan
+- `POST /api/v1/ai/schedule` - Schedule tasks
+- `POST /api/v1/ai/coach` - Get coach advice
+- `GET /api/v1/ai/status` - Check AI agents status
 
-- `subjects` - Study subjects
-- `topics` - Topics within subjects
-- `study_sessions` - Study session records
-- `tasks` - Tasks/assignments
-- `study_materials` - Notes, resources
+### Signal Processing Service
+- `POST /api/v1/signals/focus/start` - Start focus tracking
+- `POST /api/v1/signals/focus/:id/data` - Add focus data point
+- `POST /api/v1/signals/focus/:id/end` - End focus session
+- `GET /api/v1/signals/focus/:id` - Get focus session details
+- `GET /api/v1/signals/focus/stats/summary` - Get focus statistics
 
-## 📝 License
+### Analytics Service
+- `POST /api/v1/analytics/track` - Track event
+- `GET /api/v1/analytics/timeline` - Get activity timeline
+- `GET /api/v1/analytics/summary` - Get activity summary
+- `GET /api/v1/analytics/insights` - Get insights
 
-MIT
-npm test -- --coverage
+## Authentication
 
-````
+All protected endpoints require a JWT token in the Authorization header:
 
-## 🔧 Development
-
-```bash
-# Run linter
-npm run lint
-
-# Format code
-npm run format
-
-# Check formatting
-npm run format:check
-````
-
-## 🐳 Docker Commands
-
-```bash
-# Build image
-npm run docker:build
-
-# Run container
-npm run docker:run
-
-# Using docker-compose
-docker-compose up -d        # Start all services
-docker-compose down         # Stop all services
-docker-compose logs -f api  # View logs
+```
+Authorization: Bearer <your-jwt-token>
 ```
 
-## 🌍 Environment Variables
+Get a token by registering or logging in via the Auth Service.
 
-See `.env.example` for all available configuration options.
+## Health Checks
 
-## 📊 Monitoring
+Each service exposes a health check endpoint:
+- `/api/v1/health`
 
-The API includes:
+## Shared Utilities
 
-- Winston logging
-- Morgan HTTP request logging
-- Health check endpoints
-- Error tracking
+Located in `/shared` directory:
 
-## 🔒 Security Features
+- **auth.js** - JWT and password hashing utilities
+- **database.js** - MongoDB connection management
+- **middleware.js** - CORS, logging, rate limiting, error handling
+- **logger.js** - Winston logger configuration
 
-- Helmet.js for security headers
-- CORS configuration
-- Rate limiting
-- JWT authentication
-- Input validation
-- Password hashing with bcrypt
+## Integration with AI Agents
 
-## 📝 License
+The AI Orchestrator service communicates with the Python AI agents via HTTP at `http://localhost:5000`.
+
+## Development
+
+### Testing
+```bash
+npm test
+```
+
+### Linting
+```bash
+npm run lint
+```
+
+## License
 
 MIT
