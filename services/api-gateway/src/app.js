@@ -61,6 +61,7 @@ const ANALYTICS_SERVICE_URL = process.env.ANALYTICS_SERVICE_URL || 'http://analy
 // Proxy configuration
 const proxyOptions = {
   changeOrigin: true,
+  xfwd: true,
   onError: (err, req, res) => {
     logger.error('Proxy error:', err);
     res.status(502).json({ error: 'Bad Gateway - Service unavailable' });
@@ -77,6 +78,10 @@ app.use('/api/v1/study', createProxyMiddleware({ ...proxyOptions, target: STUDY_
 app.use('/api/v1/ai', createProxyMiddleware({ ...proxyOptions, target: AI_ORCHESTRATOR_SERVICE_URL }));
 app.use('/api/v1/signals', createProxyMiddleware({ ...proxyOptions, target: SIGNAL_PROCESSING_SERVICE_URL }));
 app.use('/api/v1/analytics', createProxyMiddleware({ ...proxyOptions, target: ANALYTICS_SERVICE_URL }));
+
+// Proxy for static uploads (Avatars) - Served by User Profile Service
+// Note: In production, use Nginx or S3/Cloud storage directly
+app.use('/uploads', createProxyMiddleware({ ...proxyOptions, target: USER_PROFILE_SERVICE_URL }));
 
 // Catch-all for undefined routes
 app.use('*', (req, res) => {

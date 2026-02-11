@@ -12,7 +12,17 @@ const userProfileSchema = new mongoose.Schema({
     maxlength: 500
   },
   avatar: {
-    type: String
+    type: String,
+    default: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'
+  },
+  nickname: {
+    type: String,
+    trim: true
+  },
+  level: {
+    current: { type: Number, default: 1 },
+    xp: { type: Number, default: 0 },
+    title: { type: String, default: 'Novice Explorer' }
   },
   preferences: {
     studyTime: {

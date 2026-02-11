@@ -58,6 +58,10 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static directory for uploads
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Shared middleware
 app.use(corsMiddleware);
 app.use(loggingMiddleware);

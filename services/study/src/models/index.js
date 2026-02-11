@@ -14,7 +14,18 @@ const studySessionSchema = new mongoose.Schema({
   },
   duration: {
     type: Number, // in minutes
-    required: true
+  },
+  status: {
+    type: String,
+    enum: ['active', 'completed'],
+    default: 'completed'
+  },
+  startTime: {
+    type: Date,
+    default: Date.now
+  },
+  endTime: {
+    type: Date
   },
   focusScore: {
     type: Number,

@@ -6,11 +6,21 @@ const router = express.Router();
 
 // Validation schema
 const createSessionSchema = Joi.object({
-  taskId: Joi.string().optional(),
-  topicId: Joi.string().optional(),
-  duration: Joi.number().required(),
+  taskId: Joi.string().allow('', null).optional(),
+  topicId: Joi.string().allow('', null).optional(),
+  duration: Joi.number().optional(),
+  status: Joi.string().valid('active', 'completed').optional(),
+  startTime: Joi.date().optional(),
   focusScore: Joi.number().min(0).max(100).optional(),
-  notes: Joi.string().max(1000).optional()
+  notes: Joi.string().max(1000).allow('', null).optional()
+});
+
+// Update session schema
+const updateSessionSchema = Joi.object({
+  duration: Joi.number().optional(),
+  status: Joi.string().valid('active', 'completed').optional(),
+  endTime: Joi.date().optional(),
+  notes: Joi.string().optional()
 });
 
 // Get all sessions
@@ -48,8 +58,10 @@ router.get('/:sessionId', async (req, res) => {
 
 // Create session
 router.post('/', async (req, res) => {
+  console.log('Received session create request body:', req.body);
   const { error } = createSessionSchema.validate(req.body);
   if (error) {
+    console.error('Session validation error:', error.details[0].message);
     return res.status(400).json({ error: error.details[0].message });
   }
 
@@ -57,11 +69,45 @@ router.post('/', async (req, res) => {
   
   const session = await StudySession.create({
     userId,
+    status: req.body.duration ? 'completed' : 'active',
     ...req.body
   });
   
   res.status(201).json({ 
     message: 'Session created',
+    session 
+  });
+});
+
+// Update/End session
+router.put('/:sessionId', async (req, res) => {
+  const { error } = updateSessionSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  const userId = req.user.userId;
+  const { sessionId } = req.params;
+  
+  const session = await StudySession.findOne({ _id: sessionId, userId });
+  
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  Object.assign(session, req.body);
+  
+  // If completing, ensure end time and duration are set
+  if (req.body.status === 'completed' && !session.duration && session.startTime) {
+      session.endTime = new Date();
+      const diffMs = session.endTime - session.startTime;
+      session.duration = Math.round(diffMs / 60000); // Minutes
+  }
+  
+  await session.save();
+  
+  res.json({ 
+    message: 'Session updated',
     session 
   });
 });
