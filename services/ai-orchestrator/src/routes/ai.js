@@ -25,8 +25,8 @@ const scheduleTasksSchema = Joi.object({
 });
 
 const coachAdviceSchema = Joi.object({
-  context: Joi.string().required(),
-  userStats: Joi.object().optional()
+  ignored_count: Joi.number().min(0).optional().default(0),
+  do_not_disturb: Joi.boolean().optional().default(false)
 });
 
 // Course Ingestion Agent
@@ -113,30 +113,58 @@ router.post('/schedule', async (req, res) => {
   }
 });
 
-// Coach Agent
+// Coach Agent - Forwards request to Python AI service
 router.post('/coach', async (req, res) => {
   const { error } = coachAdviceSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
   }
 
-  const userId = req.user.userId;
-  const { context, userStats } = req.body;
+  const userId = req.user?.userId || 'anonymous'; // Fallback if auth not enabled
+  const { ignored_count = 0, do_not_disturb = false } = req.body;
 
   try {
-    const result = await executeAIAgent('coach', {
-      userId,
-      context,
-      userStats
+    // Forward request to Python AI service
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    
+    const response = await axios.post(`${AI_SERVICE_URL}/api/coach/run`, {
+      user_id: userId,
+      ignored_count,
+      do_not_disturb
     });
 
+    // Return the coach's decision
     res.json({
-      message: 'Coach advice generated',
-      advice: result.advice,
-      recommendations: result.recommendations
+      message: 'Coach executed successfully',
+      action_type: response.data.action_type,
+      coach_message: response.data.message,
+      reasoning: response.data.reasoning,
+      timestamp: response.data.timestamp
     });
   } catch (err) {
-    res.status(500).json({ error: 'Coach advice failed', details: err.message });
+    console.error('Coach execution failed:', err.message);
+    
+    // Handle different error types
+    if (err.response) {
+      // Python service returned an error
+      res.status(err.response.status).json({ 
+        error: 'Coach execution failed', 
+        details: err.response.data.detail || err.message 
+      });
+    } else if (err.request) {
+      // Python service is unreachable
+      res.status(503).json({ 
+        error: 'AI service unavailable', 
+        details: 'Cannot connect to Python AI service' 
+      });
+    } else {
+      // Other error
+      res.status(500).json({ 
+        error: 'Coach execution failed', 
+        details: err.message 
+      });
+    }
   }
 });
 
