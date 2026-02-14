@@ -7,35 +7,21 @@ const UserProfile = require('../models/UserProfile');
 
 const router = express.Router();
 
-// Configuration for Multer (File Upload)
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = 'uploads/avatars';
-    // Ensure directory exists
-    if (!fs.existsSync(uploadDir)){
-        fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Sanitize and ensure unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configuration for Multer (File Upload) - use memoryStorage so avatars can be stored in DB as data URLs
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-    fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|gif|webp/; // Allowed extensions
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-        if (mimetype && extname) {
-            return cb(null, true);
-        }
-        cb(new Error("Error: File upload only supports following file.types: " + filetypes));
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png|gif|webp/; // Allowed extensions
+    const mimetype = file.mimetype && filetypes.test(file.mimetype);
+    const extname = path.extname(file.originalname || '').toLowerCase() && filetypes.test(path.extname(file.originalname || '').toLowerCase());
+    if (mimetype && extname) {
+      return cb(null, true);
     }
+    cb(new Error("Error: File upload only supports following file.types: " + filetypes));
+  }
 });
 
 // Update profile schema (avatar is now optional handling, as it might be handled separately or as string)
@@ -78,11 +64,10 @@ router.get('/', async (req, res) => {
   if (!profile) {
     profile = await UserProfile.create({ userId });
   }
-  // If avatar is a relative uploads path, convert to absolute URL so clients can display it
+  // If avatar is a relative uploads path (legacy), convert to absolute URL so clients can display it.
+  // If avatar is already a data URL, return it unchanged.
   try {
-    if (profile.avatar && !profile.avatar.startsWith('http')) {
-      // Prefer forwarded headers (when behind a proxy/gateway) so the
-      // client receives a reachable URL (e.g. http://localhost:3000/...)
+    if (profile.avatar && !profile.avatar.startsWith('http') && !profile.avatar.startsWith('data:')) {
       const forwardedHost = req.headers['x-forwarded-host'] || req.headers['x-forwarded-hostname'];
       const forwardedProto = req.headers['x-forwarded-proto'] || req.headers['x-forwarded-protocol'];
       const host = forwardedHost || req.get('host') || 'localhost:3000';
@@ -108,12 +93,12 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
     console.error('Error logging request data', e);
   }
 
-  // If file uploaded, add its path to body.avatar (assuming serving statically at /uploads)
-  if (req.file) {
-      // In a real prod setup with Nginx/Gateway, this path would be mapped. 
-      // For now, we assume simple static serve.
-      req.body.avatar = `/uploads/avatars/${req.file.filename}`;
-  }
+    // If file uploaded, convert to base64 data URL and store in body.avatar
+    if (req.file && req.file.buffer) {
+      const mime = req.file.mimetype || 'application/octet-stream';
+      const b64 = req.file.buffer.toString('base64');
+      req.body.avatar = `data:${mime};base64,${b64}`;
+    }
 
   // Remove avatarFile from body if present (multer might have left it or legacy reasons)
   delete req.body.avatarFile;
