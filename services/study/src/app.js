@@ -7,6 +7,7 @@ const express = require('express');
 //   healthCheck,
 //   authenticate
 // } = require('@study-partner/shared');
+const path = require('path');
 const taskRoutes = require('./routes/tasks');
 const topicRoutes = require('./routes/topics');
 const sessionRoutes = require('./routes/sessions');
@@ -67,6 +68,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(corsMiddleware);
 app.use(loggingMiddleware);
 app.use(rateLimiter);
+
+// Serve uploaded files (subject images) from the service's uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/v1/health', healthCheck);

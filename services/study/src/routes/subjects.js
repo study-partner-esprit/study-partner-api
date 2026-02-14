@@ -6,22 +6,14 @@ const axios = require('axios');
 
 const router = express.Router();
 
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for image uploads - use memoryStorage so we can store image data in DB
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    if (file.mimetype && file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
@@ -79,10 +71,12 @@ router.post('/', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'Subject with this name already exists' });
     }
 
-    // Handle image upload
+    // Handle image upload: convert to data URL and store in DB
     let imageUrl = null;
-    if (req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
+    if (req.file && req.file.buffer) {
+      const mime = req.file.mimetype || 'application/octet-stream';
+      const b64 = req.file.buffer.toString('base64');
+      imageUrl = `data:${mime};base64,${b64}`;
     }
 
     const subject = new Subject({
@@ -164,9 +158,11 @@ router.put('/:subjectId', upload.single('image'), async (req, res) => {
     if (name) subject.name = name;
     if (description !== undefined) subject.description = description;
 
-    // Handle image upload
-    if (req.file) {
-      subject.image = `/uploads/${req.file.filename}`;
+    // Handle image upload: convert to data URL and store in DB
+    if (req.file && req.file.buffer) {
+      const mime = req.file.mimetype || 'application/octet-stream';
+      const b64 = req.file.buffer.toString('base64');
+      subject.image = `data:${mime};base64,${b64}`;
     }
 
     await subject.save();
