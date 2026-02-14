@@ -72,12 +72,12 @@ const proxyOptions = {
 };
 
 // Route proxies
-app.use('/api/v1/auth', createProxyMiddleware({ ...proxyOptions, target: AUTH_SERVICE_URL }));
-app.use('/api/v1/users', createProxyMiddleware({ ...proxyOptions, target: USER_PROFILE_SERVICE_URL }));
-app.use('/api/v1/study', createProxyMiddleware({ ...proxyOptions, target: STUDY_SERVICE_URL }));
-app.use('/api/v1/ai', createProxyMiddleware({ ...proxyOptions, target: AI_ORCHESTRATOR_SERVICE_URL }));
-app.use('/api/v1/signals', createProxyMiddleware({ ...proxyOptions, target: SIGNAL_PROCESSING_SERVICE_URL }));
-app.use('/api/v1/analytics', createProxyMiddleware({ ...proxyOptions, target: ANALYTICS_SERVICE_URL }));
+app.use('/api/v1/auth', createProxyMiddleware({ ...proxyOptions, target: AUTH_SERVICE_URL, pathRewrite: { '^/api/v1/auth': '/api/v1/auth' } }));
+app.use('/api/v1/users', createProxyMiddleware({ ...proxyOptions, target: USER_PROFILE_SERVICE_URL, pathRewrite: { '^/api/v1/users': '/api/v1/users' } }));
+app.use('/api/v1/study', createProxyMiddleware({ ...proxyOptions, target: STUDY_SERVICE_URL, pathRewrite: { '^/api/v1/study': '/api/v1/study' } }));
+app.use('/api/v1/ai', createProxyMiddleware({ ...proxyOptions, target: AI_ORCHESTRATOR_SERVICE_URL, pathRewrite: { '^/api/v1/ai': '/api/v1/ai' } }));
+app.use('/api/v1/signals', createProxyMiddleware({ ...proxyOptions, target: SIGNAL_PROCESSING_SERVICE_URL, pathRewrite: { '^/api/v1/signals': '/api/v1/signals' } }));
+app.use('/api/v1/analytics', createProxyMiddleware({ ...proxyOptions, target: ANALYTICS_SERVICE_URL, pathRewrite: { '^/api/v1/analytics': '/api/v1/analytics' } }));
 
 // Proxy for static uploads (Avatars) - Served by User Profile Service
 // Note: In production, use Nginx or S3/Cloud storage directly

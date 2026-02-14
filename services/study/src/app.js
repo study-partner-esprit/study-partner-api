@@ -10,6 +10,9 @@ const express = require('express');
 const taskRoutes = require('./routes/tasks');
 const topicRoutes = require('./routes/topics');
 const sessionRoutes = require('./routes/sessions');
+const subjectRoutes = require('./routes/subjects');
+const courseRoutes = require('./routes/courses');
+const planRoutes = require('./routes/plans');
 
 // Temporary middleware until shared package is fixed
 const corsMiddleware = (req, res, next) => {
@@ -72,6 +75,9 @@ app.get('/api/v1/health', healthCheck);
 app.use('/api/v1/study/tasks', authenticate, taskRoutes);
 app.use('/api/v1/study/topics', authenticate, topicRoutes);
 app.use('/api/v1/study/sessions', authenticate, sessionRoutes);
+app.use('/api/v1/study/subjects', authenticate, subjectRoutes);
+app.use('/api/v1/study/courses', authenticate, courseRoutes);
+app.use('/api/v1/study/plans', authenticate, planRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

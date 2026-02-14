@@ -6,6 +6,9 @@ WORKDIR /app
 # Install curl for health checks
 RUN apk add --no-cache curl
 
+# Create uploads directory
+RUN mkdir -p uploads
+
 # Copy root package files
 COPY package.json package-lock.json* ./
 
@@ -20,6 +23,9 @@ RUN npm install
 
 # Change to service directory
 WORKDIR /app/services/study
+
+# Create uploads directory
+RUN mkdir -p uploads
 
 # Expose port
 EXPOSE 3003

@@ -1,24 +1,4 @@
 services:
-  # MongoDB Database
-  mongo:
-    image: mongo:7.0
-    container_name: study-partner-mongo
-    restart: unless-stopped
-    ports:
-      - "27018:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
-    volumes:
-      - mongo-data:/data/db
-    networks:
-      - study-partner-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # API Gateway - Port 3000
   api-gateway:
     build:
@@ -44,6 +24,7 @@ services:
       - ai-orchestrator-service
       - signal-processing-service
       - analytics-service
+      - ai-service
     networks:
       - study-partner-network
 
@@ -59,12 +40,11 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_EXPIRES_IN=1h
-    depends_on:
-      mongo:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
 
@@ -80,11 +60,10 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3002
-      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
-    depends_on:
-      mongo:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
 
@@ -100,11 +79,13 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3003
-      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
+      - AI_SERVICE_URL=http://ai-service:8000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
     depends_on:
-      mongo:
-        condition: service_healthy
+      - ai-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
 
@@ -120,8 +101,13 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3004
-      - AI_SERVICE_URL=http://study-partner-ai:5000
+      - AI_SERVICE_URL=http://ai-service:8000
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      - ai-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
 
@@ -137,11 +123,10 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3005
-      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
-    depends_on:
-      mongo:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
 
@@ -157,17 +142,35 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3006
-      - MONGODB_URI=mongodb://admin:admin123@mongo:27017/study_partner?authSource=admin
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
-    depends_on:
-      mongo:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - study-partner-network
+
+  # Python AI Service - Port 8000
+  ai-service:
+    build:
+      context: ../study-partner-ai
+      dockerfile: Dockerfile
+    container_name: ai-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
+      - GEMINI_API_KEY=AIzaSyBEwmQxqqLBIdcfESy8fwNrBfGUy-lN0nE
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - study-partner-network
+    volumes:
+      - ../study-partner-ai:/app
+    working_dir: /app
+    command: >
+      bash -c "uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --reload"
 
 networks:
   study-partner-network:
     driver: bridge
-
-volumes:
-  mongo-data:

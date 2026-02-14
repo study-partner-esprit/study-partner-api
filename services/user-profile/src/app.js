@@ -8,6 +8,8 @@ const express = require('express');
 //   authenticate
 // } = require('@study-partner/shared');
 const profileRoutes = require('./routes/profile');
+const availabilityRoutes = require('./routes/availability');
+const gamificationRoutes = require('./routes/gamification');
 
 // Temporary middleware until shared package is fixed
 const corsMiddleware = (req, res, next) => {
@@ -72,6 +74,12 @@ app.get('/api/v1/health', healthCheck);
 
 // Protected profile routes (require authentication)
 app.use('/api/v1/users/profile', authenticate, profileRoutes);
+
+// Protected availability routes (require authentication)
+app.use('/api/v1/users/availability', authenticate, availabilityRoutes);
+
+// Protected gamification routes (require authentication)
+app.use('/api/v1/users/gamification', authenticate, gamificationRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

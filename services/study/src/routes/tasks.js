@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
-const { Task } = require('../models');
+const axios = require('axios');
+const { Task, Course } = require('../models');
 
 const router = express.Router();
 
@@ -117,6 +118,29 @@ router.delete('/:taskId', async (req, res) => {
   }
   
   res.json({ message: 'Task deleted' });
+});
+
+// Generate tasks from planner using AI (kept for backward compatibility) (kept for backward compatibility)
+// Note: New flow should use /api/v1/study/plans/create instead
+router.post('/generate-from-planner', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { goal, availableTimeMinutes, courseId, startDate } = req.body;
+
+    if (!goal) {
+      return res.status(400).json({ error: 'Goal is required' });
+    }
+
+    // Redirect to new study plans endpoint
+    res.status(410).json({
+      error: 'This endpoint is deprecated. Please use /api/v1/study/plans/create instead',
+      newEndpoint: '/api/v1/study/plans/create'
+    });
+
+  } catch (error) {
+    console.error('Error in deprecated endpoint:', error);
+    res.status(500).json({ error: 'Failed to generate tasks' });
+  }
 });
 
 module.exports = router;

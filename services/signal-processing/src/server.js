@@ -15,7 +15,7 @@ const logger = {
 };
 
 const PORT = process.env.PORT || 8005;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongo:27017/study_partner';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
 
 async function startServer() {
   try {
