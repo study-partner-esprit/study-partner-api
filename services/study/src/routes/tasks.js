@@ -31,14 +31,14 @@ const updateTaskSchema = Joi.object({
 router.get('/', async (req, res) => {
   const userId = req.user.userId;
   const { status, priority, topicId } = req.query;
-  
+
   const filter = { userId };
   if (status) filter.status = status;
   if (priority) filter.priority = priority;
   if (topicId) filter.topicId = topicId;
-  
+
   const tasks = await Task.find(filter).sort({ createdAt: -1 });
-  
+
   res.json({ tasks });
 });
 
@@ -46,13 +46,13 @@ router.get('/', async (req, res) => {
 router.get('/:taskId', async (req, res) => {
   const userId = req.user.userId;
   const { taskId } = req.params;
-  
+
   const task = await Task.findOne({ _id: taskId, userId });
-  
+
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   res.json({ task });
 });
 
@@ -64,15 +64,15 @@ router.post('/', async (req, res) => {
   }
 
   const userId = req.user.userId;
-  
+
   const task = await Task.create({
     userId,
     ...req.body
   });
-  
-  res.status(201).json({ 
+
+  res.status(201).json({
     message: 'Task created',
-    task 
+    task
   });
 });
 
@@ -85,24 +85,24 @@ router.put('/:taskId', async (req, res) => {
 
   const userId = req.user.userId;
   const { taskId } = req.params;
-  
+
   const task = await Task.findOne({ _id: taskId, userId });
-  
+
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   Object.assign(task, req.body);
-  
+
   if (req.body.status === 'completed' && !task.completedAt) {
     task.completedAt = new Date();
   }
-  
+
   await task.save();
-  
-  res.json({ 
+
+  res.json({
     message: 'Task updated',
-    task 
+    task
   });
 });
 
@@ -110,13 +110,13 @@ router.put('/:taskId', async (req, res) => {
 router.delete('/:taskId', async (req, res) => {
   const userId = req.user.userId;
   const { taskId } = req.params;
-  
+
   const result = await Task.deleteOne({ _id: taskId, userId });
-  
+
   if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  
+
   res.json({ message: 'Task deleted' });
 });
 
@@ -136,7 +136,6 @@ router.post('/generate-from-planner', async (req, res) => {
       error: 'This endpoint is deprecated. Please use /api/v1/study/plans/create instead',
       newEndpoint: '/api/v1/study/plans/create'
     });
-
   } catch (error) {
     console.error('Error in deprecated endpoint:', error);
     res.status(500).json({ error: 'Failed to generate tasks' });

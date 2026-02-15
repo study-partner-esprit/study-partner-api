@@ -47,7 +47,7 @@ router.get('/', async (req, res) => {
     }
 
     console.log('Fetching courses for user:', userId, 'subject:', subject_id);
-    
+
     const courses = await Course.find(query).sort({ createdAt: -1 }).lean();
 
     console.log('Found', courses.length, 'courses');
@@ -138,9 +138,9 @@ router.post('/', upload.array('files', 10), async (req, res) => {
 
       // Transform AI service topics format to match our schema
       const aiTopics = aiResponse.data.topics || [];
-      const transformedTopics = aiTopics.map(topic => ({
+      const transformedTopics = aiTopics.map((topic) => ({
         title: topic.title,
-        subtopics: (topic.subtopics || []).map(sub => ({
+        subtopics: (topic.subtopics || []).map((sub) => ({
           id: sub.id,
           title: sub.title,
           summary: sub.summary,
@@ -172,13 +172,13 @@ router.post('/', upload.array('files', 10), async (req, res) => {
     } catch (aiError) {
       console.error('❌ AI service error:', aiError.message);
       console.error('Error details:', aiError.response?.data || aiError);
-      
+
       // Update course status to failed
       course.status = 'failed';
       course.processedAt = new Date();
       course.warning = `AI service processing failed: ${aiError.message}`;
       await course.save();
-      
+
       // Clean up uploaded files
       req.files.forEach((file) => {
         try {

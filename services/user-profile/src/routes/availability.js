@@ -66,6 +66,64 @@ router.post('/', async (req, res) => {
       color: value.color
     });
     
+    // Also save to calendar collection for the next 4 weeks
+    try {
+      const mongoose = require('mongoose');
+      const calendarColl = mongoose.connection.collection('calendar');
+      
+      const dayMap = {
+        'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4,
+        'Friday': 5, 'Saturday': 6, 'Sunday': 0
+      };
+      
+      const dayIndex = dayMap[value.day_of_week];
+      const [startHour, startMin] = value.start_time.split(':').map(Number);
+      const [endHour, endMin] = value.end_time.split(':').map(Number);
+      
+      const entries = [];
+      const now = new Date();
+      
+      // Create entries for the next 4 weeks
+      for (let week = 0; week < 4; week++) {
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() + (week * 7));
+        
+        // Find the target day of the week
+        const targetDate = new Date(weekStart);
+        const currentDay = weekStart.getDay(); // 0 = Sunday
+        const daysToAdd = (dayIndex - currentDay + 7) % 7;
+        targetDate.setDate(weekStart.getDate() + daysToAdd);
+        
+        // Set start and end times
+        const startTime = new Date(targetDate);
+        startTime.setHours(startHour, startMin || 0, 0, 0);
+        
+        const endTime = new Date(targetDate);
+        endTime.setHours(endHour, endMin || 0, 0, 0);
+        
+        entries.push({
+          userId,
+          planId: null,
+          taskId: slot._id.toString(),
+          title: value.label,
+          description: `Blocked time: ${value.label}`,
+          startTime,
+          endTime,
+          estimatedMinutes: null,
+          status: 'blocked',
+          source: 'availability',
+          createdAt: new Date()
+        });
+      }
+      
+      if (entries.length > 0) {
+        await calendarColl.insertMany(entries);
+      }
+    } catch (calendarErr) {
+      console.error('Failed to save availability to calendar:', calendarErr.message);
+      // Don't fail the request if calendar save fails
+    }
+    
     // Return in frontend format
     res.status(201).json({
       _id: slot._id.toString(),
@@ -94,6 +152,21 @@ router.delete('/:id', async (req, res) => {
     
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Slot not found' });
+    }
+    
+    // Also remove from calendar collection
+    try {
+      const mongoose = require('mongoose');
+      const calendarColl = mongoose.connection.collection('calendar');
+      
+      await calendarColl.deleteMany({
+        userId,
+        taskId: slotId,
+        source: 'availability'
+      });
+    } catch (calendarErr) {
+      console.error('Failed to remove availability from calendar:', calendarErr.message);
+      // Don't fail the request if calendar cleanup fails
     }
     
     res.json({ status: 'success', message: 'Slot deleted' });

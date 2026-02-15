@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const { StudyPlan, Task, Course } = require('../models');
 
 const router = express.Router();
@@ -42,7 +43,11 @@ router.post('/create', async (req, res) => {
       course = await Course.findOne({ _id: courseId, userId });
       console.log('Course found:', course ? 'Yes' : 'No');
       if (course) {
-        console.log('Course details:', { id: course._id.toString(), userId: course.userId, status: course.status });
+        console.log('Course details:', {
+          id: course._id.toString(),
+          userId: course.userId,
+          status: course.status
+        });
       }
     } catch (error) {
       console.error('Error finding course:', error.message);
@@ -54,9 +59,9 @@ router.post('/create', async (req, res) => {
       try {
         const anyCourse = await Course.findOne({ _id: courseId });
         if (anyCourse) {
-          console.log('Course exists but belongs to different user:', { 
-            courseUserId: anyCourse.userId, 
-            requestUserId: userId 
+          console.log('Course exists but belongs to different user:', {
+            courseUserId: anyCourse.userId,
+            requestUserId: userId
           });
         } else {
           console.log('Course does not exist in database');
@@ -68,12 +73,16 @@ router.post('/create', async (req, res) => {
     }
 
     if (course.status !== 'completed') {
-      return res.status(400).json({ error: 'Course is still being processed. Please wait until processing is complete.' });
+      return res
+        .status(400)
+        .json({
+          error: 'Course is still being processed. Please wait until processing is complete.'
+        });
     }
 
     // Call AI planner service
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
+
     let aiResponse;
     try {
       aiResponse = await axios.post(
@@ -91,9 +100,14 @@ router.post('/create', async (req, res) => {
       );
     } catch (aiError) {
       console.error('AI planner service error:', aiError.message, aiError.code);
-      
+
       // If AI service is not available, provide a mock response for testing
-      if (aiError.code === 'ECONNREFUSED' || aiError.message.includes('ECONNREFUSED') || aiError.message.includes('connect') || aiError.message.includes('timeout')) {
+      if (
+        aiError.code === 'ECONNREFUSED' ||
+        aiError.message.includes('ECONNREFUSED') ||
+        aiError.message.includes('connect') ||
+        aiError.message.includes('timeout')
+      ) {
         console.log('AI service not available, using mock response for testing');
         aiResponse = {
           data: {
@@ -108,7 +122,7 @@ router.post('/create', async (req, res) => {
                 is_review: false
               },
               {
-                id: 'mock-task-2', 
+                id: 'mock-task-2',
                 title: `Core Concepts of ${goal}`,
                 description: `Dive deeper into ${goal} concepts`,
                 estimatedTime: 45,
@@ -135,7 +149,8 @@ router.post('/create', async (req, res) => {
                 is_review: true
               }
             ],
-            warning: 'AI service is currently starting up. This is a mock study plan for testing purposes.'
+            warning:
+              'AI service is currently starting up. This is a mock study plan for testing purposes.'
           }
         };
       } else {
@@ -150,7 +165,7 @@ router.post('/create', async (req, res) => {
     const aiTasks = aiResponse.data.tasks || [];
     const taskGraph = {
       goal: goal,
-      tasks: aiTasks.map(task => ({
+      tasks: aiTasks.map((task) => ({
         id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         title: task.title,
         description: task.description,
@@ -173,7 +188,7 @@ router.post('/create', async (req, res) => {
       totalEstimatedMinutes,
       taskGraphTasksCount: taskGraph.tasks.length
     });
-    
+
     try {
       const studyPlan = await StudyPlan.create({
         userId,
@@ -190,7 +205,7 @@ router.post('/create', async (req, res) => {
       // Create tasks linked to this study plan
       const createdTasks = [];
       console.log('Creating tasks for study plan:', studyPlan._id);
-      
+
       try {
         for (const taskData of taskGraph.tasks) {
           const task = await Task.create({
@@ -198,7 +213,8 @@ router.post('/create', async (req, res) => {
             studyPlanId: studyPlan._id.toString(),
             title: taskData.title,
             description: taskData.description,
-            priority: taskData.difficulty < 0.4 ? 'low' : (taskData.difficulty < 0.7 ? 'medium' : 'high'),
+            priority:
+              taskData.difficulty < 0.4 ? 'low' : taskData.difficulty < 0.7 ? 'medium' : 'high',
             estimatedTime: taskData.estimated_minutes,
             tags: [goal.substring(0, 50)],
             status: 'todo'
@@ -233,7 +249,6 @@ router.post('/create', async (req, res) => {
       console.error('Database error creating study plan:', dbError);
       return res.status(500).json({ error: 'Failed to save study plan to database' });
     }
-
   } catch (error) {
     console.error('Error creating study plan:', error);
     res.status(500).json({ error: 'Failed to create study plan' });
@@ -250,12 +265,10 @@ router.get('/', async (req, res) => {
     if (status) filter.status = status;
     if (courseId) filter.courseId = courseId;
 
-    const plans = await StudyPlan.find(filter)
-      .sort({ createdAt: -1 })
-      .lean();
+    const plans = await StudyPlan.find(filter).sort({ createdAt: -1 }).lean();
 
     // Format response
-    const formattedPlans = plans.map(plan => ({
+    const formattedPlans = plans.map((plan) => ({
       id: plan._id.toString(),
       userId: plan.userId,
       courseId: plan.courseId,
@@ -270,15 +283,54 @@ router.get('/', async (req, res) => {
     }));
 
     res.json({ plans: formattedPlans });
-
   } catch (error) {
     console.error('Error fetching study plans:', error);
     res.status(500).json({ error: 'Failed to fetch study plans' });
   }
 });
 
+// Get calendar entries for the user within upcoming weeks (default 2 weeks)
+router.get('/calendar', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const weeks = parseInt(req.query.weeks, 10) || 2;
+    const start = req.query.startDate ? new Date(req.query.startDate) : new Date();
+    const end = new Date(start);
+    end.setDate(end.getDate() + weeks * 7);
+
+    console.log(`\n=== Fetching calendar entries ===`);
+    console.log(`User ID: ${userId}`);
+    console.log(`Date range: ${start.toISOString()} to ${end.toISOString()}`);
+    console.log(`Weeks: ${weeks}`);
+
+    const calendarColl = mongoose.connection.collection('calendar');
+
+    // Get total count for this user
+    const totalCount = await calendarColl.countDocuments({ userId });
+    console.log(`Total entries for user: ${totalCount}`);
+
+    const entries = await calendarColl
+      .find({
+        userId,
+        startTime: { $gte: start, $lte: end }
+      })
+      .sort({ startTime: 1 })
+      .toArray();
+
+    console.log(`Found ${entries.length} entries in date range`);
+    if (entries.length > 0) {
+      console.log('Sample entry:', entries[0]);
+    }
+
+    res.json({ entries });
+  } catch (error) {
+    console.error('Error fetching calendar entries:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar entries' });
+  }
+});
+
 // Get specific study plan by ID
-router.get('/:planId', async (req, res) => {
+router.get('/:planId([0-9a-fA-F]{24})', async (req, res) => {
   try {
     const userId = req.user.userId;
     const { planId } = req.params;
@@ -309,7 +361,6 @@ router.get('/:planId', async (req, res) => {
       },
       tasks
     });
-
   } catch (error) {
     console.error('Error fetching study plan:', error);
     res.status(500).json({ error: 'Failed to fetch study plan' });
@@ -346,44 +397,46 @@ router.post('/:planId/schedule', async (req, res) => {
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     try {
-      // Transform tasks to scheduler format
-      const schedulerTasks = tasks.map(task => ({
-        id: task._id.toString(),
-        user_id: userId,
-        title: task.title,
-        description: task.description,
-        estimated_duration: task.estimatedTime,
-        difficulty: task.priority === 'high' ? 'advanced' : (task.priority === 'low' ? 'beginner' : 'intermediate'),
-        prerequisites: []  // Could be enhanced later
-      }));
+      const axios = require('axios');
 
-      const schedulerContext = {
+      // Call the new Python scheduler endpoint
+      const schedulerResponse = await axios.post(`${aiServiceUrl}/api/ai/scheduler/schedule`, {
+        user_id: userId,
+        tasks: tasks,
         calendar_events: calendarEvents || [],
         max_minutes_per_day: maxMinutesPerDay || 240,
         allow_late_night: allowLateNight || false
-      };
+      });
 
-      // Note: Python AI doesn't have a direct scheduler endpoint yet
-      // For now, return a simple sequential schedule
-      // TODO: Implement proper Python AI scheduler endpoint
+      const schedule = schedulerResponse.data.schedule;
 
-      const schedule = {
-        sessions: tasks.map((task, index) => {
-          const startDate = new Date();
-          startDate.setDate(startDate.getDate() + index);
-          startDate.setHours(9, 0, 0, 0);
-          
-          return {
-            taskId: task._id.toString(),
-            title: task.title,
-            startTime: startDate.toISOString(),
-            endTime: new Date(startDate.getTime() + (task.estimatedTime || 30) * 60000).toISOString(),
-            estimatedMinutes: task.estimatedTime || 30
-          };
-        }),
-        totalMinutes: tasks.reduce((sum, t) => sum + (t.estimatedTime || 30), 0),
-        spanDays: tasks.length
-      };
+      // Persist schedule into `calendar` collection for user's calendar view
+      try {
+        const calendarColl = mongoose.connection.collection('calendar');
+        const entries = (schedule.sessions || schedule || []).map((s) => ({
+          userId,
+          planId: plan._id.toString(),
+          taskId: s.taskId || s.task_id || s.task || null,
+          title: s.title || s.name || null,
+          description: s.description || s.note || null,
+          startTime: s.startTime
+            ? new Date(s.startTime)
+            : s.start_time
+              ? new Date(s.start_time)
+              : null,
+          endTime: s.endTime ? new Date(s.endTime) : s.end_time ? new Date(s.end_time) : null,
+          estimatedMinutes: s.estimatedMinutes || s.estimated_minutes || s.duration || null,
+          status: 'scheduled',
+          source: 'plan',
+          createdAt: new Date()
+        }));
+
+        if (entries.length > 0) {
+          await calendarColl.insertMany(entries);
+        }
+      } catch (saveErr) {
+        console.error('Failed to save schedule to calendar collection:', saveErr.message);
+      }
 
       // Update plan status
       plan.status = 'scheduled';
@@ -395,7 +448,6 @@ router.post('/:planId/schedule', async (req, res) => {
         planId: plan._id.toString(),
         schedule: schedule
       });
-
     } catch (aiError) {
       console.error('Scheduler service error:', aiError.message);
       return res.status(500).json({
@@ -403,7 +455,6 @@ router.post('/:planId/schedule', async (req, res) => {
         details: aiError.response?.data?.detail || aiError.message
       });
     }
-
   } catch (error) {
     console.error('Error scheduling study plan:', error);
     res.status(500).json({ error: 'Failed to schedule study plan' });
@@ -438,7 +489,7 @@ router.get('/:planId/schedule', async (req, res) => {
         const startDate = new Date(plan.scheduledAt);
         startDate.setDate(startDate.getDate() + index);
         startDate.setHours(9, 0, 0, 0);
-        
+
         return {
           taskId: task._id.toString(),
           title: task.title,
@@ -452,7 +503,6 @@ router.get('/:planId/schedule', async (req, res) => {
     };
 
     res.json({ schedule });
-
   } catch (error) {
     console.error('Error fetching schedule:', error);
     res.status(500).json({ error: 'Failed to fetch schedule' });
@@ -478,10 +528,131 @@ router.delete('/:planId', async (req, res) => {
     await StudyPlan.deleteOne({ _id: planId, userId });
 
     res.json({ message: 'Study plan and associated tasks deleted successfully' });
-
   } catch (error) {
     console.error('Error deleting study plan:', error);
     res.status(500).json({ error: 'Failed to delete study plan' });
+  }
+});
+
+// Schedule user's tasks (all or filtered)
+router.post('/schedule-tasks', async (req, res) => {
+  console.log('=== Schedule tasks endpoint called ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+  console.log('User from auth:', req.user);
+  try {
+    const userId = req.user.userId;
+    const { taskIds, calendarEvents, maxMinutesPerDay, allowLateNight } = req.body;
+
+    // Get tasks - either specific IDs or all user tasks with status 'todo' or 'in-progress'
+    let tasks;
+    if (taskIds && Array.isArray(taskIds) && taskIds.length > 0) {
+      tasks = await Task.find({ _id: { $in: taskIds }, userId }).lean();
+    } else {
+      // Get all pending tasks
+      tasks = await Task.find({
+        userId,
+        status: { $in: ['todo', 'in-progress'] }
+      }).lean();
+    }
+
+    console.log(`Found ${tasks.length} tasks to schedule for user ${userId}`);
+
+    if (tasks.length === 0) {
+      return res.status(400).json({ error: 'No tasks found to schedule' });
+    }
+
+    // Check for existing scheduled entries to prevent duplicates
+    const calendarColl = mongoose.connection.collection('calendar');
+    const taskIdsToSchedule = tasks.map(t => t._id.toString());
+    const existingScheduled = await calendarColl.find({
+      userId,
+      taskId: { $in: taskIdsToSchedule },
+      source: 'auto'
+    }).toArray();
+
+    console.log(`Found ${existingScheduled.length} already scheduled tasks`);
+
+    if (existingScheduled.length > 0) {
+      // Remove already scheduled tasks from the list
+      const scheduledTaskIds = new Set(existingScheduled.map(e => e.taskId));
+      tasks = tasks.filter(t => !scheduledTaskIds.has(t._id.toString()));
+      console.log(`After filtering duplicates: ${tasks.length} tasks remain`);
+
+      if (tasks.length === 0) {
+        return res.status(200).json({
+          message: 'All tasks are already scheduled',
+          schedule: { sessions: existingScheduled },
+          tasksCount: 0
+        });
+      }
+    }
+
+    // Call Python AI scheduler service
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    try {
+      const axios = require('axios');
+
+      const schedulerResponse = await axios.post(`${aiServiceUrl}/api/ai/scheduler/schedule`, {
+        user_id: userId,
+        tasks: tasks,
+        calendar_events: calendarEvents || [],
+        max_minutes_per_day: maxMinutesPerDay || 240,
+        allow_late_night: allowLateNight || false
+      });
+
+      const schedule = schedulerResponse.data.schedule;
+
+      // Persist schedule into `calendar` collection (task-scheduling flow)
+      try {
+        const calendarColl = mongoose.connection.collection('calendar');
+        const entries = (schedule.sessions || schedule || []).map((s) => ({
+          userId,
+          planId: null,
+          taskId: s.taskId || s.task_id || s.task || null,
+          title: s.title || s.name || null,
+          description: s.description || s.note || null,
+          startTime: s.startTime
+            ? new Date(s.startTime)
+            : s.start_time
+              ? new Date(s.start_time)
+              : null,
+          endTime: s.endTime ? new Date(s.endTime) : s.end_time ? new Date(s.end_time) : null,
+          estimatedMinutes: s.estimatedMinutes || s.estimated_minutes || s.duration || null,
+          status: 'scheduled',
+          source: 'auto',
+          createdAt: new Date()
+        }));
+
+        console.log(`Attempting to save ${entries.length} entries to calendar collection`);
+        console.log('Sample entry:', JSON.stringify(entries[0], null, 2));
+
+        if (entries.length > 0) {
+          const result = await calendarColl.insertMany(entries);
+          console.log(`✓ Successfully saved ${result.insertedCount} entries to calendar`);
+        } else {
+          console.log('⚠ No entries to save to calendar');
+        }
+      } catch (saveErr) {
+        console.error('❌ Failed to save scheduled tasks to calendar collection:', saveErr);
+        throw saveErr; // Propagate error to main handler
+      }
+
+      res.json({
+        message: 'Tasks scheduled successfully',
+        schedule: schedule,
+        tasksCount: tasks.length
+      });
+    } catch (aiError) {
+      console.error('Scheduler service error:', aiError.message);
+      return res.status(500).json({
+        error: 'Failed to schedule tasks',
+        details: aiError.response?.data?.detail || aiError.message
+      });
+    }
+  } catch (error) {
+    console.error('Error scheduling tasks:', error);
+    res.status(500).json({ error: 'Failed to schedule tasks' });
   }
 });
 

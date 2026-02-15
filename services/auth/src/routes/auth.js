@@ -16,7 +16,15 @@ const verifyPassword = async (password, hash) => {
 };
 
 const generateToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
+  return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+    expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+  });
+};
+
+const generateRefreshToken = (payload) => {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key', {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
+  });
 };
 
 const router = express.Router();
@@ -58,8 +66,13 @@ router.post('/register', async (req, res) => {
     name
   });
 
-  // Generate token
+  // Generate tokens
   const token = generateToken({
+    userId: user._id,
+    email: user.email,
+    role: user.role
+  });
+  const refreshToken = generateRefreshToken({
     userId: user._id,
     email: user.email,
     role: user.role
@@ -68,7 +81,8 @@ router.post('/register', async (req, res) => {
   res.status(201).json({
     message: 'User registered successfully',
     user: user.toJSON(),
-    token
+    token,
+    refreshToken
   });
 });
 
@@ -97,8 +111,13 @@ router.post('/login', async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
-  // Generate token
+  // Generate tokens
   const token = generateToken({
+    userId: user._id,
+    email: user.email,
+    role: user.role
+  });
+  const refreshToken = generateRefreshToken({
     userId: user._id,
     email: user.email,
     role: user.role
@@ -107,8 +126,41 @@ router.post('/login', async (req, res) => {
   res.json({
     message: 'Login successful',
     user: user.toJSON(),
-    token
+    token,
+    refreshToken
   });
+});
+
+// Refresh token
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token required' });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key');
+    
+    // Generate new tokens
+    const newToken = generateToken({
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role
+    });
+    const newRefreshToken = generateRefreshToken({
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role
+    });
+
+    res.json({
+      token: newToken,
+      refreshToken: newRefreshToken
+    });
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
 });
 
 // Get current user (protected route)

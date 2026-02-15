@@ -86,6 +86,8 @@ services:
       - ai-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./services/study/src:/app/services/study/src
     networks:
       - study-partner-network
 

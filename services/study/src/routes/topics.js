@@ -23,9 +23,9 @@ const updateTopicSchema = Joi.object({
 // Get all topics
 router.get('/', async (req, res) => {
   const userId = req.user.userId;
-  
+
   const topics = await Topic.find({ userId }).sort({ name: 1 });
-  
+
   res.json({ topics });
 });
 
@@ -33,13 +33,13 @@ router.get('/', async (req, res) => {
 router.get('/:topicId', async (req, res) => {
   const userId = req.user.userId;
   const { topicId } = req.params;
-  
+
   const topic = await Topic.findOne({ _id: topicId, userId });
-  
+
   if (!topic) {
     return res.status(404).json({ error: 'Topic not found' });
   }
-  
+
   res.json({ topic });
 });
 
@@ -51,15 +51,15 @@ router.post('/', async (req, res) => {
   }
 
   const userId = req.user.userId;
-  
+
   const topic = await Topic.create({
     userId,
     ...req.body
   });
-  
-  res.status(201).json({ 
+
+  res.status(201).json({
     message: 'Topic created',
-    topic 
+    topic
   });
 });
 
@@ -72,19 +72,19 @@ router.put('/:topicId', async (req, res) => {
 
   const userId = req.user.userId;
   const { topicId } = req.params;
-  
+
   const topic = await Topic.findOne({ _id: topicId, userId });
-  
+
   if (!topic) {
     return res.status(404).json({ error: 'Topic not found' });
   }
-  
+
   Object.assign(topic, req.body);
   await topic.save();
-  
-  res.json({ 
+
+  res.json({
     message: 'Topic updated',
-    topic 
+    topic
   });
 });
 
@@ -92,13 +92,13 @@ router.put('/:topicId', async (req, res) => {
 router.delete('/:topicId', async (req, res) => {
   const userId = req.user.userId;
   const { topicId } = req.params;
-  
+
   const result = await Topic.deleteOne({ _id: topicId, userId });
-  
+
   if (result.deletedCount === 0) {
     return res.status(404).json({ error: 'Topic not found' });
   }
-  
+
   res.json({ message: 'Topic deleted' });
 });
 
