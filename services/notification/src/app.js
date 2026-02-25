@@ -1,5 +1,5 @@
 const express = require('express');
-const authRoutes = require('./routes/auth');
+const notificationRoutes = require('./routes/notifications');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -12,38 +12,35 @@ const { authenticate } = require('@study-partner/shared/auth');
 
 // --- Environment validation (fail-fast on missing secrets) ---
 const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
-const INSECURE_DEFAULTS = ['your-super-secret-jwt-key-change-in-production', 'your-secret-key', 'change-me'];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
     console.error(`[FATAL] Missing required environment variable: ${key}`);
     process.exit(1);
   }
 }
-if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
-  console.error('[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.');
+
+if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET?.includes('change-in-production')) {
+  console.error('[FATAL] Insecure default JWT_SECRET detected in production');
   process.exit(1);
 }
 
 const app = express();
 
-// Body parsing middleware
+// Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Shared middleware
+// Middleware
 app.use(securityMiddleware());
 app.use(corsMiddleware());
 app.use(loggingMiddleware);
 app.use(rateLimiter());
 
 // Health check
-app.get('/api/v1/health', healthCheck('auth'));
+app.get('/api/v1/health', healthCheck('notification'));
 
-// Auth routes (public)
-app.use('/api/v1/auth', authRoutes);
-
-// Protected /me endpoint requires authentication
-app.get('/api/v1/auth/me', authenticate, authRoutes);
+// Notification routes (require authentication)
+app.use('/api/v1/notifications', authenticate, notificationRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

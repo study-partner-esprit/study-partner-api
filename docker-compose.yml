@@ -17,6 +17,7 @@ services:
       - AI_ORCHESTRATOR_SERVICE_URL=http://ai-orchestrator-service:3004
       - SIGNAL_PROCESSING_SERVICE_URL=http://signal-processing-service:3005
       - ANALYTICS_SERVICE_URL=http://analytics-service:3006
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
     depends_on:
       - auth-service
       - user-profile-service
@@ -24,6 +25,7 @@ services:
       - ai-orchestrator-service
       - signal-processing-service
       - analytics-service
+      - notification-service
       - ai-service
     networks:
       - study-partner-network
@@ -40,9 +42,9 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
-      - JWT_EXPIRES_IN=1h
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -60,8 +62,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3002
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -79,9 +81,9 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3003
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - AI_SERVICE_URL=http://ai-service:8000
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     depends_on:
       - ai-service
     extra_hosts:
@@ -105,7 +107,7 @@ services:
       - PORT=3004
       - AI_SERVICE_URL=http://ai-service:8000
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     depends_on:
       - ai-service
     extra_hosts:
@@ -125,8 +127,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3005
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -144,8 +146,27 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3006
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
-      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - study-partner-network
+
+  # Notification Service - Port 3007
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./services/notification/Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -161,8 +182,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI=mongodb://host.docker.internal:27017/study_partner
-      - GEMINI_API_KEY=AIzaSyBEwmQxqqLBIdcfESy8fwNrBfGUy-lN0nE
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?GEMINI_API_KEY must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

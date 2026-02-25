@@ -1,58 +1,30 @@
 const express = require('express');
-// const {
-//   corsMiddleware,
-//   loggingMiddleware,
-//   errorHandler,
-//   rateLimiter,
-//   healthCheck,
-//   authenticate
-// } = require('@study-partner/shared');
 const profileRoutes = require('./routes/profile');
 const availabilityRoutes = require('./routes/availability');
 const gamificationRoutes = require('./routes/gamification');
+const {
+  corsMiddleware,
+  securityMiddleware,
+  loggingMiddleware,
+  errorHandler,
+  rateLimiter,
+  healthCheck
+} = require('@study-partner/shared');
+const { authenticate } = require('@study-partner/shared/auth');
 
-// Temporary middleware until shared package is fixed
-const corsMiddleware = (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
+// --- Environment validation (fail-fast on missing secrets) ---
+const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
+const INSECURE_DEFAULTS = ['your-super-secret-jwt-key-change-in-production', 'your-secret-key', 'change-me'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    process.exit(1);
   }
-};
-
-const loggingMiddleware = (req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-};
-
-const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-};
-
-const rateLimiter = (req, res, next) => next(); // No rate limiting for now
-const healthCheck = (req, res) => res.json({ status: 'ok', service: 'user-profile' });
-
-// Temporary JWT authentication until shared package is fixed
-const jwt = require('jsonwebtoken');
-const authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  
-  const token = authHeader.substring(7);
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
+}
+if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
+  console.error('[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.');
+  process.exit(1);
+}
 
 const app = express();
 
@@ -65,12 +37,13 @@ const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Shared middleware
-app.use(corsMiddleware);
+app.use(securityMiddleware());
+app.use(corsMiddleware());
 app.use(loggingMiddleware);
-app.use(rateLimiter);
+app.use(rateLimiter());
 
 // Health check
-app.get('/api/v1/health', healthCheck);
+app.get('/api/v1/health', healthCheck('user-profile'));
 
 // Protected profile routes (require authentication)
 app.use('/api/v1/users/profile', authenticate, profileRoutes);

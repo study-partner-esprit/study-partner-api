@@ -1,38 +1,23 @@
 const express = require('express');
 const { authenticate } = require('@study-partner/shared/auth');
-// const {
-//   corsMiddleware,
-//   loggingMiddleware,
-//   errorHandler,
-//   rateLimiter,
-//   healthCheck
-// } = require('@study-partner/shared');
+const {
+  corsMiddleware,
+  securityMiddleware,
+  loggingMiddleware,
+  errorHandler,
+  rateLimiter,
+  healthCheck
+} = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
 
-// Temporary middleware until shared package is fixed
-const corsMiddleware = (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
+// --- Environment validation (fail-fast on missing secrets) ---
+const REQUIRED_ENV = ['JWT_SECRET'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    process.exit(1);
   }
-};
-
-const loggingMiddleware = (req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - URL: ${req.url} - BaseURL: ${req.baseUrl}`);
-  next();
-};
-
-const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-};
-
-const rateLimiter = (req, res, next) => next(); // No rate limiting for now
-const healthCheck = (req, res) => res.json({ status: 'ok', service: 'ai-orchestrator' });
+}
 
 const app = express();
 
@@ -40,13 +25,18 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// File upload middleware (for frame analysis proxy)
+const fileUpload = require('express-fileupload');
+app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 } }));
+
 // Shared middleware
-app.use(corsMiddleware);
+app.use(securityMiddleware());
+app.use(corsMiddleware());
 app.use(loggingMiddleware);
-app.use(rateLimiter);
+app.use(rateLimiter());
 
 // Health check
-app.get('/api/v1/health', healthCheck);
+app.get('/api/v1/health', healthCheck('ai-orchestrator'));
 
 // Protected AI routes (require authentication)
 app.use('/api/v1/ai', authenticate, aiRoutes);

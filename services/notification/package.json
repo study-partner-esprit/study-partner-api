@@ -1,7 +1,7 @@
 {
-  "name": "@study-partner/signal-processing-service",
+  "name": "@study-partner/notification-service",
   "version": "1.0.0",
-  "description": "Signal Processing - Eye tracking, focus detection, biometric analysis",
+  "description": "Notification Service - User alerts, reminders, and push notifications",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

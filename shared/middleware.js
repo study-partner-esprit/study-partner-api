@@ -1,14 +1,31 @@
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 
 /**
+ * Security headers middleware (helmet)
+ */
+function securityMiddleware() {
+  return helmet({
+    contentSecurityPolicy: false, // Disabled for API-only services
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
+}
+
+/**
  * CORS middleware configuration
  */
 function corsMiddleware() {
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000'];
+
   return cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: process.env.NODE_ENV === 'production'
+      ? allowedOrigins
+      : true, // allow all in development
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -100,6 +117,7 @@ function healthCheck(serviceName) {
 
 module.exports = {
   corsMiddleware,
+  securityMiddleware,
   loggingMiddleware,
   errorHandler,
   rateLimiter,

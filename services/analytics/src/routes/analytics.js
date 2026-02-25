@@ -168,13 +168,77 @@ router.get('/insights', async (req, res) => {
     ? totalStudyTime / studySessions.length 
     : 0;
 
+  // Calculate most active day of the week
+  const dayOfWeekCount = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  const dayOfWeekDuration = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  for (const session of studySessions) {
+    const dayOfWeek = new Date(session.timestamp).getDay();
+    dayOfWeekCount[dayOfWeek]++;
+    dayOfWeekDuration[dayOfWeek] += (session.metadata?.duration || 0);
+  }
+
+  // Find the day with the highest weighted activity score
+  let mostActiveDay = null;
+  let maxScore = 0;
+
+  for (let day = 0; day < 7; day++) {
+    // Weighted score: frequency (40%) + total study duration (60%)
+    const frequencyScore = dayOfWeekCount[day];
+    const durationScore = dayOfWeekDuration[day];
+    const score = frequencyScore * 0.4 + durationScore * 0.6;
+
+    if (score > maxScore) {
+      maxScore = score;
+      mostActiveDay = {
+        day: day,
+        name: dayNames[day],
+        sessionCount: dayOfWeekCount[day],
+        totalDuration: Math.round(dayOfWeekDuration[day]),
+        avgDuration: dayOfWeekCount[day] > 0 ? Math.round(dayOfWeekDuration[day] / dayOfWeekCount[day]) : 0
+      };
+    }
+  }
+
+  // Calculate peak study hours (group by hour of day)
+  const hourlyActivity = {};
+  for (const session of studySessions) {
+    const hour = new Date(session.timestamp).getHours();
+    if (!hourlyActivity[hour]) {
+      hourlyActivity[hour] = { count: 0, totalDuration: 0 };
+    }
+    hourlyActivity[hour].count++;
+    hourlyActivity[hour].totalDuration += (session.metadata?.duration || 0);
+  }
+
+  let peakHour = null;
+  let maxHourScore = 0;
+  for (const [hour, data] of Object.entries(hourlyActivity)) {
+    if (data.count > maxHourScore) {
+      maxHourScore = data.count;
+      peakHour = parseInt(hour);
+    }
+  }
+
+  // Weekly consistency: how many distinct days of the week had at least one study session
+  const activeDaysCount = Object.values(dayOfWeekCount).filter(count => count > 0).length;
+  const weeklyConsistencyScore = Math.round((activeDaysCount / 7) * 100);
+
   const insights = {
     period: `${days} days`,
     studySessions: studySessions.length,
     completedTasks: completedTasks.length,
     totalStudyTime: Math.round(totalStudyTime),
     avgStudyTime: Math.round(avgStudyTime),
-    mostActiveDay: null, // TODO: calculate most active day
+    mostActiveDay: mostActiveDay,
+    peakStudyHour: peakHour !== null ? `${peakHour}:00 - ${peakHour + 1}:00` : null,
+    weeklyConsistency: weeklyConsistencyScore,
+    dayOfWeekBreakdown: dayNames.map((name, i) => ({
+      day: name,
+      sessions: dayOfWeekCount[i],
+      totalDuration: Math.round(dayOfWeekDuration[i])
+    })),
     productivity: completedTasks.length > 0 
       ? Math.round((completedTasks.length / (completedTasks.length + studySessions.length)) * 100)
       : 0

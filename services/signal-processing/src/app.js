@@ -1,39 +1,23 @@
 const express = require('express');
-// const {
-//   corsMiddleware,
-//   loggingMiddleware,
-//   errorHandler,
-//   rateLimiter,
-//   healthCheck,
-//   authenticate
-// } = require('@study-partner/shared');
 const focusRoutes = require('./routes/focus');
+const {
+  corsMiddleware,
+  securityMiddleware,
+  loggingMiddleware,
+  errorHandler,
+  rateLimiter,
+  healthCheck
+} = require('@study-partner/shared');
+const { authenticate } = require('@study-partner/shared/auth');
 
-// Temporary middleware until shared package is fixed
-const corsMiddleware = (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
+// --- Environment validation (fail-fast on missing secrets) ---
+const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    process.exit(1);
   }
-};
-
-const loggingMiddleware = (req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-};
-
-const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-};
-
-const rateLimiter = (req, res, next) => next(); // No rate limiting for now
-const healthCheck = (req, res) => res.json({ status: 'ok', service: 'signal-processing' });
-const authenticate = (req, res, next) => next(); // No auth for now
+}
 
 const app = express();
 
@@ -42,12 +26,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Shared middleware
-app.use(corsMiddleware);
+app.use(securityMiddleware());
+app.use(corsMiddleware());
 app.use(loggingMiddleware);
-app.use(rateLimiter);
+app.use(rateLimiter());
 
 // Health check
-app.get('/api/v1/health', healthCheck);
+app.get('/api/v1/health', healthCheck('signal-processing'));
 
 // Protected signal processing routes (require authentication)
 app.use('/api/v1/signals/focus', authenticate, focusRoutes);

@@ -277,6 +277,221 @@ router.post('/coach', async (req, res) => {
   }
 });
 
+// Coach History - Forwards request to Python AI service
+router.get('/coach/history/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { limit = 20 } = req.query;
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/coach/history/${userId}`, {
+      params: { limit }
+    });
+
+    res.json(response.data);
+  } catch (err) {
+    console.error('Coach history fetch failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json({ error: err.response.data.detail || err.message });
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// ==================== Signal Processing (proxy to Python AI) ====================
+
+// Analyze a video frame for focus and fatigue
+router.post('/signals/analyze-frame', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const FormData = require('form-data');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    // Forward the raw request body as multipart form data
+    const formData = new FormData();
+    formData.append('user_id', req.body.user_id || req.user?.userId || 'anonymous');
+
+    if (req.file) {
+      formData.append('frame', req.file.buffer, { filename: 'frame.jpg', contentType: req.file.mimetype });
+    } else if (req.files?.frame) {
+      const frame = Array.isArray(req.files.frame) ? req.files.frame[0] : req.files.frame;
+      formData.append('frame', frame.data, { filename: frame.name, contentType: frame.mimetype });
+    }
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/analyze-frame`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 30000,
+      maxContentLength: 10 * 1024 * 1024
+    });
+
+    res.json(response.data);
+  } catch (err) {
+    console.error('Frame analysis proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Get current signals for a user
+router.get('/signals/current/:userId', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/signals/current/${req.params.userId}`);
+    res.json(response.data);
+  } catch (err) {
+    console.error('Signal fetch failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Get signal history for a user
+router.get('/signals/history/:userId', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/signals/history/${req.params.userId}`, {
+      params: { limit: req.query.limit || 50 }
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error('Signal history fetch failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Trigger signal processing for a user
+router.post('/signals/process', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/process`, {
+      user_id: req.body.user_id || req.user?.userId
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error('Signal processing proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Get latest signal results for a user
+router.get('/signals/latest/:userId', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/signals/latest/${req.params.userId}`, {
+      params: { limit: req.query.limit || 10 }
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error('Latest signals fetch failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// ── Review / Spaced Repetition Proxy Routes ──────────────────────────
+
+// Schedule a review for a completed task
+router.post('/reviews/schedule', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/reviews/schedule`, req.body);
+    res.json(response.data);
+  } catch (err) {
+    console.error('Schedule review proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Record a review result
+router.post('/reviews/record-result', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/reviews/record-result`, req.body);
+    res.json(response.data);
+  } catch (err) {
+    console.error('Record review result proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Get pending reviews for a user
+router.get('/reviews/pending/:userId', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/reviews/pending/${req.params.userId}`, {
+      params: { limit: req.query.limit || 20 }
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error('Get pending reviews proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
+// Get review stats for a user
+router.get('/reviews/stats/:userId', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(`${AI_SERVICE_URL}/api/ai/reviews/stats/${req.params.userId}`);
+    res.json(response.data);
+  } catch (err) {
+    console.error('Get review stats proxy failed:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(503).json({ error: 'AI service unavailable' });
+    }
+  }
+});
+
 // Get AI agent status
 router.get('/status', async (req, res) => {
   res.json({
@@ -284,9 +499,11 @@ router.get('/status', async (req, res) => {
       courseIngestion: 'available',
       planner: 'available',
       scheduler: 'available',
-      coach: 'available'
+      coach: 'available',
+      signals: 'available',
+      reviews: 'available'
     },
-    aiServiceUrl: process.env.AI_SERVICE_URL || 'http://study-partner-ai:5000'
+    aiServiceUrl: process.env.AI_SERVICE_URL || 'http://study-partner-ai:8000'
   });
 });
 

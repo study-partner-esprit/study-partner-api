@@ -6,22 +6,27 @@ Express.js microservices architecture for the Study Partner platform.
 
 ### Services
 
-1. **API Gateway** (Port 8000) - Request routing and load balancing
-2. **Auth Service** (Port 8001) - Authentication and authorization (JWT, RBAC)
-3. **User Profile Service** (Port 8002) - User settings, preferences, goals, stats
-4. **Study Management Service** (Port 8003) - Tasks, topics, study sessions
-5. **AI Orchestrator Service** (Port 8004) - Integrates Course Ingestion, Planner, Scheduler, Coach agents
-6. **Signal Processing Service** (Port 8005) - Focus tracking, eye tracking, biometric analysis
-7. **Analytics Service** (Port 8006) - Data analytics, reporting, insights
+| Service | Port | Description |
+|---------|------|-------------|
+| API Gateway | 3000 | Request routing, rate limiting, monitoring |
+| Auth Service | 3001 | JWT authentication & RBAC |
+| User Profile Service | 3002 | Profiles, availability, gamification |
+| Study Service | 3003 | Tasks, topics, sessions, courses, plans |
+| AI Orchestrator | 3004 | Proxies to Python AI (planner, coach, signals) |
+| Signal Processing | 3005 | Focus session tracking |
+| Analytics Service | 3006 | Event tracking & insights |
+| Notification Service | 3007 | In-app notifications |
+| Python AI Service | 8000 | ML models, course ingestion, coaching |
 
 ### Tech Stack
 
-- **Runtime**: Node.js with Express.js (JavaScript)
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT with bcryptjs
-- **Logging**: Winston
-- **Rate Limiting**: express-rate-limit
-- **Orchestration**: Docker + docker-compose
+- **Runtime**: Node.js 20+ / Express.js
+- **Database**: MongoDB 7 with Mongoose ODM
+- **Authentication**: JWT (bcryptjs + jsonwebtoken)
+- **Logging**: Winston (structured JSON, request IDs via UUID)
+- **Rate Limiting**: express-rate-limit (via `@study-partner/shared`)
+- **CORS**: cors package (via `@study-partner/shared`)
+- **Orchestration**: Docker Compose (9 containers on `study-partner-network`)
 
 ## Getting Started
 
@@ -129,9 +134,16 @@ All requests go through the gateway at `http://localhost:8000`
 
 ### AI Orchestrator Service
 - `POST /api/v1/ai/ingest` - Ingest course content
-- `POST /api/v1/ai/plan` - Generate study plan
+- `POST /api/v1/ai/plan/create` - Create study plan (fetches user availability, calls Python AI)
+- `GET /api/v1/ai/plan/list` - Get user's study plans
 - `POST /api/v1/ai/schedule` - Schedule tasks
 - `POST /api/v1/ai/coach` - Get coach advice
+- `GET /api/v1/ai/coach/history/:userId` - Get coach history
+- `POST /api/v1/ai/signals/analyze-frame` - Analyse video frame (proxy → Python AI)
+- `GET /api/v1/ai/signals/current/:userId` - Current signal snapshot
+- `GET /api/v1/ai/signals/history/:userId` - Signal history
+- `POST /api/v1/ai/signals/process` - Trigger signal processing
+- `GET /api/v1/ai/signals/latest/:userId` - Latest analysed signals
 - `GET /api/v1/ai/status` - Check AI agents status
 
 ### Signal Processing Service
@@ -147,6 +159,14 @@ All requests go through the gateway at `http://localhost:8000`
 - `GET /api/v1/analytics/summary` - Get activity summary
 - `GET /api/v1/analytics/insights` - Get insights
 
+### Notification Service
+- `GET /api/v1/notifications` - Get user notifications
+- `POST /api/v1/notifications` - Create notification
+- `PATCH /api/v1/notifications/:id/read` - Mark as read
+- `POST /api/v1/notifications/mark-all-read` - Mark all as read
+- `DELETE /api/v1/notifications/:id` - Delete notification
+- `GET /api/v1/notifications/unread-count` - Get unread count
+
 ## Authentication
 
 All protected endpoints require a JWT token in the Authorization header:
@@ -160,20 +180,33 @@ Get a token by registering or logging in via the Auth Service.
 ## Health Checks
 
 Each service exposes a health check endpoint:
-- `/api/v1/health`
+- `/api/v1/health` — individual service
 
-## Shared Utilities
+Aggregate monitoring (via API Gateway):
+- `GET /api/v1/monitoring/health` — pings all services, returns combined status
+- `GET /api/v1/monitoring/metrics` — request count, error rate, uptime
 
-Located in `/shared` directory:
+Run the health check script from the project root:
+```bash
+./health-check.sh
+```
 
-- **auth.js** - JWT and password hashing utilities
-- **database.js** - MongoDB connection management
-- **middleware.js** - CORS, logging, rate limiting, error handling
-- **logger.js** - Winston logger configuration
+## Shared Utilities (`@study-partner/shared`)
 
-## Integration with AI Agents
+All services import from the shared package (`file:../../shared`):
 
-The AI Orchestrator service communicates with the Python AI agents via HTTP at `http://localhost:5000`.
+| Module | Exports |
+|--------|---------|
+| `auth.js` | `hashPassword`, `verifyPassword`, `generateToken`, `verifyToken`, `authenticate` (JWT middleware), `requireRole` |
+| `middleware.js` | `corsMiddleware()`, `loggingMiddleware`, `errorHandler`, `rateLimiter(max, windowMs)`, `healthCheck(serviceName)` |
+| `database.js` | `connectDatabase`, `disconnectDatabase` |
+| `logger.js` | Winston logger instance (structured JSON, console + file transports) |
+
+## Integration with AI Service
+
+The AI Orchestrator communicates with the Python AI service at `AI_SERVICE_URL` (default: `http://study-partner-ai:8000` in Docker, `http://localhost:8000` locally).
+
+**All frontend AI calls are routed through the gateway** — the frontend never contacts the Python service directly.
 
 ## Development
 

@@ -102,16 +102,37 @@ router.post('/:sessionId/end', async (req, res) => {
     const avgFocusLevel = dataPoints.reduce((sum, dp) => sum + dp.focusLevel, 0) / totalPoints;
     const focusedPoints = dataPoints.filter(dp => !dp.isDistracted).length;
     const distractedPoints = totalPoints - focusedPoints;
-    
+
     const duration = (session.endTime - session.startTime) / 1000; // seconds
     const intervalDuration = duration / totalPoints;
+
+    // Detect breaks: consecutive distracted points for more than 30 seconds
+    let breakCount = 0;
+    let currentBreakLength = 0;
+    const minBreakDuration = 30; // 30 seconds minimum for a break
+
+    for (const point of dataPoints) {
+      if (point.isDistracted) {
+        currentBreakLength += intervalDuration;
+      } else {
+        if (currentBreakLength >= minBreakDuration) {
+          breakCount++;
+        }
+        currentBreakLength = 0;
+      }
+    }
+
+    // Check if there's an ongoing break at the end
+    if (currentBreakLength >= minBreakDuration) {
+      breakCount++;
+    }
 
     session.focusScore = Math.round(avgFocusLevel);
     session.summary = {
       totalFocusTime: Math.round(focusedPoints * intervalDuration),
       totalDistractedTime: Math.round(distractedPoints * intervalDuration),
       avgFocusLevel: Math.round(avgFocusLevel * 100) / 100,
-      breakCount: 0 // TODO: detect breaks
+      breakCount: breakCount
     };
   }
 
