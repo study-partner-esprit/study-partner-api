@@ -92,6 +92,7 @@ router.put('/:taskId', async (req, res) => {
     return res.status(404).json({ error: 'Task not found' });
   }
 
+  const wasCompleted = task.status === 'completed';
   Object.assign(task, req.body);
 
   if (req.body.status === 'completed' && !task.completedAt) {
@@ -99,6 +100,29 @@ router.put('/:taskId', async (req, res) => {
   }
 
   await task.save();
+
+  // Auto-award XP on task completion
+  if (req.body.status === 'completed' && !wasCompleted) {
+    try {
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      const priorityMap = { low: 'task_complete_easy', medium: 'task_complete_medium', high: 'task_complete_hard' };
+      const action = priorityMap[task.priority] || 'task_complete_medium';
+      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
+        action,
+        metadata: { taskId: task._id.toString(), title: task.title }
+      }, {
+        headers: { 'Authorization': req.headers.authorization }
+      });
+      // Progress quests
+      await axios.post(`${USER_PROFILE_URL}/api/v1/users/quests/progress`, {
+        action: 'task_complete'
+      }, {
+        headers: { 'Authorization': req.headers.authorization }
+      });
+    } catch (xpErr) {
+      console.warn('XP/Quest award failed for task completion:', xpErr.message);
+    }
+  }
 
   res.json({
     message: 'Task updated',

@@ -1,86 +1,91 @@
 const mongoose = require('mongoose');
 
-const userProfileSchema = new mongoose.Schema({
-  userId: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  bio: {
-    type: String,
-    maxlength: 500
-  },
-  avatar: {
-    type: String,
-    default: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'
-  },
-  nickname: {
-    type: String,
-    trim: true
-  },
-  level: {
-    current: { type: Number, default: 1 },
-    xp: { type: Number, default: 0 },
-    title: { type: String, default: 'Novice Explorer' }
-  },
-  preferences: {
-    studyTime: {
+const userProfileSchema = new mongoose.Schema(
+  {
+    userId: {
       type: String,
-      enum: ['morning', 'afternoon', 'evening', 'night'],
-      default: 'evening'
+      required: true,
+      unique: true,
+      index: true
     },
-    notifications: {
-      email: {
-        type: Boolean,
-        default: true
+    bio: {
+      type: String,
+      maxlength: 500
+    },
+    avatar: {
+      type: String,
+      default: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'
+    },
+    nickname: {
+      type: String,
+      trim: true
+    },
+    level: {
+      current: { type: Number, default: 1 },
+      xp: { type: Number, default: 0 },
+      title: { type: String, default: 'Novice Explorer' }
+    },
+    preferences: {
+      studyTime: {
+        type: String,
+        enum: ['morning', 'afternoon', 'evening', 'night'],
+        default: 'evening'
       },
-      push: {
-        type: Boolean,
-        default: true
+      notifications: {
+        email: {
+          type: Boolean,
+          default: true
+        },
+        push: {
+          type: Boolean,
+          default: true
+        }
+      },
+      theme: {
+        type: String,
+        enum: ['light', 'dark'],
+        default: 'dark'
+      },
+      language: {
+        type: String,
+        default: 'en'
       }
     },
-    theme: {
-      type: String,
-      enum: ['light', 'dark'],
-      default: 'dark'
+    stats: {
+      totalStudyTime: {
+        type: Number,
+        default: 0
+      },
+      completedTasks: {
+        type: Number,
+        default: 0
+      },
+      currentStreak: {
+        type: Number,
+        default: 0
+      },
+      longestStreak: {
+        type: Number,
+        default: 0
+      }
     },
-    language: {
-      type: String,
-      default: 'en'
-    }
+    goals: [
+      {
+        title: String,
+        target: Number,
+        current: Number,
+        deadline: Date,
+        completed: {
+          type: Boolean,
+          default: false
+        }
+      }
+    ]
   },
-  stats: {
-    totalStudyTime: {
-      type: Number,
-      default: 0
-    },
-    completedTasks: {
-      type: Number,
-      default: 0
-    },
-    currentStreak: {
-      type: Number,
-      default: 0
-    },
-    longestStreak: {
-      type: Number,
-      default: 0
-    }
-  },
-  goals: [{
-    title: String,
-    target: Number,
-    current: Number,
-    deadline: Date,
-    completed: {
-      type: Boolean,
-      default: false
-    }
-  }]
-}, {
-  timestamps: true
-});
+  {
+    timestamps: true
+  }
+);
 
 const UserProfile = mongoose.model('UserProfile', userProfileSchema);
 

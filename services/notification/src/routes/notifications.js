@@ -10,7 +10,8 @@ const createSchema = Joi.object({
   type: Joi.string().valid(
     'study_reminder', 'break_suggestion', 'plan_generated',
     'task_due', 'session_suspended', 'fatigue_alert',
-    'focus_drop', 'achievement', 'schedule_change', 'system'
+    'focus_drop', 'achievement', 'level_up', 'quest_complete',
+    'schedule_change', 'system'
   ).required(),
   title: Joi.string().max(200).required(),
   message: Joi.string().max(2000).required(),
@@ -56,6 +57,16 @@ router.post('/', async (req, res, next) => {
     }
 
     const notification = await Notification.create(value);
+
+    // Push via WebSocket if available
+    const broadcastToUser = req.app.locals.broadcastToUser;
+    if (broadcastToUser) {
+      broadcastToUser(value.userId, {
+        type: 'new_notification',
+        notification: notification.toObject()
+      });
+    }
+
     res.status(201).json(notification);
   } catch (err) {
     next(err);

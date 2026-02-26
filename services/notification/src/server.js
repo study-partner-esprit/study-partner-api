@@ -1,5 +1,7 @@
 require('dotenv').config();
+const http = require('http');
 const mongoose = require('mongoose');
+const { WebSocketServer } = require('ws');
 const app = require('./app');
 
 const logger = {
@@ -11,13 +13,83 @@ const logger = {
 const PORT = process.env.PORT || 3007;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
 
+// ── WebSocket client registry ───────────────────────
+// Map<userId, Set<WebSocket>>
+const clients = new Map();
+
+function broadcastToUser(userId, payload) {
+  const userClients = clients.get(userId);
+  if (!userClients) return;
+  const msg = JSON.stringify(payload);
+  for (const ws of userClients) {
+    if (ws.readyState === 1) { // OPEN
+      ws.send(msg);
+    }
+  }
+}
+
+// Expose broadcast function so routes can use it
+app.locals.broadcastToUser = broadcastToUser;
+
 async function startServer() {
   try {
     await mongoose.connect(MONGODB_URI);
     logger.info('Connected to MongoDB');
 
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+
+    // ── WebSocket Server on same HTTP server ────────
+    const wss = new WebSocketServer({ server, path: '/ws/notifications' });
+
+    wss.on('connection', (ws, req) => {
+      // Expect ?userId=xxx on connect
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const userId = url.searchParams.get('userId');
+
+      if (!userId) {
+        ws.close(4001, 'userId required');
+        return;
+      }
+
+      // Register
+      if (!clients.has(userId)) {
+        clients.set(userId, new Set());
+      }
+      clients.get(userId).add(ws);
+      logger.info(`WS client connected for user ${userId} (${clients.get(userId).size} connections)`);
+
+      // Heartbeat
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
+
+      ws.on('close', () => {
+        const userSet = clients.get(userId);
+        if (userSet) {
+          userSet.delete(ws);
+          if (userSet.size === 0) clients.delete(userId);
+        }
+        logger.info(`WS client disconnected for user ${userId}`);
+      });
+
+      ws.on('error', (err) => {
+        logger.warn(`WS error for user ${userId}: ${err.message}`);
+      });
+    });
+
+    // Heartbeat interval to prune dead connections
+    const heartbeatInterval = setInterval(() => {
+      wss.clients.forEach((ws) => {
+        if (!ws.isAlive) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
+      });
+    }, 30000);
+
+    wss.on('close', () => clearInterval(heartbeatInterval));
+
+    server.listen(PORT, () => {
       logger.info(`Notification service listening on port ${PORT}`);
+      logger.info(`WebSocket endpoint: ws://localhost:${PORT}/ws/notifications`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
     });
   } catch (error) {

@@ -161,6 +161,25 @@ router.post('/', upload.array('files', 10), async (req, res) => {
 
       console.log('Course saved with', transformedTopics.length, 'topics');
 
+      // Auto-award XP on course upload
+      try {
+        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+        await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
+          action: 'course_upload',
+          metadata: { courseId: course._id.toString(), title: course.title }
+        }, {
+          headers: { 'Authorization': req.headers.authorization }
+        });
+        // Progress quests
+        await axios.post(`${USER_PROFILE_URL}/api/v1/users/quests/progress`, {
+          action: 'course_upload'
+        }, {
+          headers: { 'Authorization': req.headers.authorization }
+        });
+      } catch (xpErr) {
+        console.warn('XP/Quest award failed for course upload:', xpErr.message);
+      }
+
       // Clean up uploaded files
       req.files.forEach((file) => {
         try {

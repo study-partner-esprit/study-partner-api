@@ -1,12 +1,6 @@
 require('dotenv').config();
 const app = require('./app');
-// const { connectDatabase, logger } = require('@study-partner/shared');
-
-// Temporary implementations until shared package is fixed
-const connectDatabase = async (uri) => {
-  console.log('Database connection not implemented yet');
-  return true;
-};
+const mongoose = require('mongoose');
 
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
@@ -20,7 +14,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_
 async function startServer() {
   try {
     // Connect to MongoDB
-    await connectDatabase(MONGODB_URI);
+    await mongoose.connect(MONGODB_URI);
     logger.info('Connected to MongoDB');
 
     // Start server

@@ -19,8 +19,12 @@ const mockProfile = {
   goals: [],
   gamification: { xp: 100, level: 2, badges: [], streaks: { current: 5, longest: 10 } },
   availability: [],
-  toJSON: function () { return { ...this }; },
-  toObject: function () { return { ...this }; },
+  toJSON: function () {
+    return { ...this };
+  },
+  toObject: function () {
+    return { ...this };
+  },
   save: jest.fn().mockResolvedValue(true)
 };
 
@@ -37,10 +41,14 @@ const app = express();
 app.use(express.json());
 
 // Fake auth middleware — all requests have user
-app.use('/api/v1/users/profile', (req, res, next) => {
-  req.user = { userId: 'user-123' };
-  next();
-}, profileRoutes);
+app.use(
+  '/api/v1/users/profile',
+  (req, res, next) => {
+    req.user = { userId: 'user-123' };
+    next();
+  },
+  profileRoutes
+);
 
 const request = require('supertest');
 

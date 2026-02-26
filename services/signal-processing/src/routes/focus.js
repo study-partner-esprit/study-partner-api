@@ -1,5 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
+const axios = require('axios');
 const FocusSession = require('../models/FocusSession');
 
 const router = express.Router();
@@ -137,6 +138,33 @@ router.post('/:sessionId/end', async (req, res) => {
   }
 
   await session.save();
+
+  // Auto-award XP for perfect focus sessions (score > 80)
+  if (session.focusScore && session.focusScore > 80) {
+    try {
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
+        action: 'perfect_focus_session',
+        metadata: { sessionId: session._id.toString(), focusScore: session.focusScore }
+      }, {
+        headers: { 'Authorization': req.headers.authorization }
+      });
+    } catch (xpErr) {
+      console.warn('XP award failed for perfect focus session:', xpErr.message);
+    }
+  }
+
+  // Progress focus_session quests regardless of score
+  try {
+    const USER_PROFILE_URL_Q = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+    await axios.post(`${USER_PROFILE_URL_Q}/api/v1/users/quests/progress`, {
+      action: 'focus_session'
+    }, {
+      headers: { 'Authorization': req.headers.authorization }
+    });
+  } catch (questErr) {
+    console.warn('Quest progress failed for focus session:', questErr.message);
+  }
 
   res.json({
     message: 'Session ended',
