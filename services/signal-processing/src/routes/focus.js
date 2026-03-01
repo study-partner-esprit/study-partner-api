@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
 const FocusSession = require('../models/FocusSession');
+const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
@@ -19,8 +20,8 @@ const updateSessionSchema = Joi.object({
   }).optional()
 });
 
-// Start focus tracking session
-router.post('/start', async (req, res) => {
+// Start focus tracking session (VIP+ / Trial only)
+router.post('/start', tierGate('vip_plus', 'trial'), async (req, res) => {
   const { error } = startSessionSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -43,7 +44,7 @@ router.post('/start', async (req, res) => {
 });
 
 // Add focus data point
-router.post('/:sessionId/data', async (req, res) => {
+router.post('/:sessionId/data', tierGate('vip_plus', 'trial'), async (req, res) => {
   const { error } = updateSessionSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -79,7 +80,7 @@ router.post('/:sessionId/data', async (req, res) => {
 });
 
 // End focus tracking session
-router.post('/:sessionId/end', async (req, res) => {
+router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) => {
   const userId = req.user.userId;
   const { sessionId } = req.params;
 
@@ -174,7 +175,7 @@ router.post('/:sessionId/end', async (req, res) => {
 });
 
 // Get session details
-router.get('/:sessionId', async (req, res) => {
+router.get('/:sessionId', tierGate('vip_plus', 'trial'), async (req, res) => {
   const userId = req.user.userId;
   const { sessionId } = req.params;
 
@@ -188,7 +189,7 @@ router.get('/:sessionId', async (req, res) => {
 });
 
 // Get user's recent focus sessions
-router.get('/', async (req, res) => {
+router.get('/', tierGate('vip_plus', 'trial'), async (req, res) => {
   const userId = req.user.userId;
   const { limit = 10 } = req.query;
 
@@ -200,7 +201,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get focus statistics
-router.get('/stats/summary', async (req, res) => {
+router.get('/stats/summary', tierGate('vip_plus', 'trial'), async (req, res) => {
   const userId = req.user.userId;
   const { startDate, endDate } = req.query;
 

@@ -18,8 +18,16 @@ app.use(corsMiddleware());
 app.use(loggingMiddleware);
 app.use(rateLimiter());
 
-// Health check
-app.get('/api/v1/health', healthCheck('api-gateway'));
+// Health check (no DB check for api-gateway)
+app.get('/api/v1/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'api-gateway',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
 
 // Service URLs from environment
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:3001';
@@ -50,7 +58,7 @@ app.use('/api/v1/study', createProxyMiddleware({ ...proxyOptions, target: STUDY_
 app.use('/api/v1/ai', createProxyMiddleware({ ...proxyOptions, target: AI_ORCHESTRATOR_SERVICE_URL, pathRewrite: { '^/api/v1/ai': '/api/v1/ai' } }));
 app.use('/api/v1/signals', createProxyMiddleware({ ...proxyOptions, target: SIGNAL_PROCESSING_SERVICE_URL, pathRewrite: { '^/api/v1/signals': '/api/v1/signals' } }));
 app.use('/api/v1/analytics', createProxyMiddleware({ ...proxyOptions, target: ANALYTICS_SERVICE_URL, pathRewrite: { '^/api/v1/analytics': '/api/v1/analytics' } }));
-app.use('/api/v1/notifications', createProxyMiddleware({ ...proxyOptions, target: NOTIFICATION_SERVICE_URL, pathRewrite: { '^/api/v1/notifications': '/api/v1/notifications' } }));
+app.use('/api/v1/notifications', createProxyMiddleware({ ...proxyOptions, target: NOTIFICATION_SERVICE_URL, pathRewrite: { '^/api/v1/notifications': '/api/v1/notifications' }, ws: true }));
 
 // Proxy for static uploads (Avatars) - Served by User Profile Service
 // Note: In production, use Nginx or S3/Cloud storage directly

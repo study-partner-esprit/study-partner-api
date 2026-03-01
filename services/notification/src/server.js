@@ -1,6 +1,7 @@
 require('dotenv').config();
 const http = require('http');
 const mongoose = require('mongoose');
+const axios = require('axios');
 const { WebSocketServer } = require('ws');
 const app = require('./app');
 
@@ -12,6 +13,7 @@ const logger = {
 
 const PORT = process.env.PORT || 3007;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
+const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
 
 // ── WebSocket client registry ───────────────────────
 // Map<userId, Set<WebSocket>>
@@ -30,6 +32,18 @@ function broadcastToUser(userId, payload) {
 
 // Expose broadcast function so routes can use it
 app.locals.broadcastToUser = broadcastToUser;
+
+// Update user online status in user-profile service
+async function updateOnlineStatus(userId, status) {
+  try {
+    await axios.put(`${USER_PROFILE_URL}/api/v1/users/profile/online-status`, {
+      userId,
+      onlineStatus: status
+    });
+  } catch (err) {
+    logger.warn(`Failed to update online status for ${userId}: ${err.message}`);
+  }
+}
 
 async function startServer() {
   try {
@@ -58,15 +72,36 @@ async function startServer() {
       clients.get(userId).add(ws);
       logger.info(`WS client connected for user ${userId} (${clients.get(userId).size} connections)`);
 
+      // Set user online when first connection opens
+      if (clients.get(userId).size === 1) {
+        updateOnlineStatus(userId, 'online');
+      }
+
       // Heartbeat
       ws.isAlive = true;
       ws.on('pong', () => { ws.isAlive = true; });
+
+      // Handle messages (e.g., status updates)
+      ws.on('message', (data) => {
+        try {
+          const msg = JSON.parse(data);
+          if (msg.type === 'status_update' && ['online', 'studying', 'offline'].includes(msg.status)) {
+            updateOnlineStatus(userId, msg.status);
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      });
 
       ws.on('close', () => {
         const userSet = clients.get(userId);
         if (userSet) {
           userSet.delete(ws);
-          if (userSet.size === 0) clients.delete(userId);
+          if (userSet.size === 0) {
+            clients.delete(userId);
+            // Set user offline when last connection closes
+            updateOnlineStatus(userId, 'offline');
+          }
         }
         logger.info(`WS client disconnected for user ${userId}`);
       });

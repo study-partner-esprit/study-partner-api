@@ -1,5 +1,6 @@
 const express = require('express');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -39,11 +40,17 @@ app.use(rateLimiter());
 // Health check
 app.get('/api/v1/health', healthCheck('auth'));
 
-// Auth routes (public)
+// Auth routes (public) with stricter rate limits on auth endpoints
+const authLimiter = rateLimiter(5, 60000); // 5 req/min for login
+const registerLimiter = rateLimiter(3, 60000); // 3 req/min for register
+
+app.post('/api/v1/auth/login', authLimiter);
+app.post('/api/v1/auth/register', registerLimiter);
+app.post('/api/v1/auth/forgot-password', rateLimiter(3, 60000));
 app.use('/api/v1/auth', authRoutes);
 
-// Protected /me endpoint requires authentication
-app.get('/api/v1/auth/me', authenticate, authRoutes);
+// Admin routes (require authentication + admin role)
+app.use('/api/v1/auth/admin', authenticate, adminRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

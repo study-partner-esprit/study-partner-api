@@ -3,6 +3,7 @@ const profileRoutes = require('./routes/profile');
 const availabilityRoutes = require('./routes/availability');
 const gamificationRoutes = require('./routes/gamification');
 const questRoutes = require('./routes/quests');
+const friendRoutes = require('./routes/friends');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -63,6 +64,9 @@ app.use('/api/v1/users/gamification', authenticate, gamificationRoutes);
 
 // Protected quest routes (require authentication)
 app.use('/api/v1/users/quests', authenticate, questRoutes);
+
+// Protected friend routes (require authentication)
+app.use('/api/v1/users/friends', authenticate, friendRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

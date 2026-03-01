@@ -39,7 +39,40 @@ const studySessionSchema = new mongoose.Schema({
   notes: {
     type: String,
     maxlength: 1000
-  }
+  },
+  signalHistory: [{
+    timestamp: Date,
+    focusLevel: Number,
+    fatigueLevel: Number,
+    isDistracted: Boolean
+  }],
+  breakStats: {
+    totalBreaks: { type: Number, default: 0 },
+    totalBreakDuration: { type: Number, default: 0 }, // seconds
+    avgBreakDuration: { type: Number, default: 0 }  },
+  // Team session fields
+  type: {
+    type: String,
+    enum: ['solo', 'team'],
+    default: 'solo'
+  },
+  participants: [{
+    userId: { type: String, required: true },
+    name: { type: String },
+    avatar: { type: String },
+    role: { type: String, enum: ['host', 'member'], default: 'member' },
+    joinedAt: { type: Date, default: Date.now },
+    leftAt: { type: Date }
+  }],
+  inviteCode: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  maxParticipants: {
+    type: Number,
+    default: 5,
+    max: 10  }
 }, {
   timestamps: true
 });

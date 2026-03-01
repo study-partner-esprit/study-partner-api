@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const { executeAIAgent } = require('../services/agentService');
+const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ const coachAdviceSchema = Joi.object({
 });
 
 // Course Ingestion Agent
-router.post('/ingest', async (req, res) => {
+router.post('/ingest', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   const { error } = ingestCourseSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -58,7 +59,7 @@ router.post('/ingest', async (req, res) => {
 });
 
 // Planner Agent - Creates study plan with user availability
-router.post('/plan/create', async (req, res) => {
+router.post('/plan/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   console.log('[DEBUG] Received plan/create request body:', JSON.stringify(req.body, null, 2));
   console.log('[DEBUG] User from JWT:', req.user);
   
@@ -144,7 +145,7 @@ router.post('/plan/create', async (req, res) => {
 });
 
 // Get user's study plans
-router.get('/plan/list', async (req, res) => {
+router.get('/plan/list', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   const userId = req.user.userId;
 
   try {
@@ -195,7 +196,7 @@ router.post('/plan', async (req, res) => {
 });
 
 // Scheduler Agent
-router.post('/schedule', async (req, res) => {
+router.post('/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   const { error } = scheduleTasksSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -222,7 +223,7 @@ router.post('/schedule', async (req, res) => {
 });
 
 // Coach Agent - Forwards request to Python AI service
-router.post('/coach', async (req, res) => {
+router.post('/coach', tierGate('vip_plus', 'trial'), async (req, res) => {
   const { error } = coachAdviceSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -278,7 +279,7 @@ router.post('/coach', async (req, res) => {
 });
 
 // Coach History - Forwards request to Python AI service
-router.get('/coach/history/:userId', async (req, res) => {
+router.get('/coach/history/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
   const { userId } = req.params;
   const { limit = 20 } = req.query;
 
@@ -304,7 +305,7 @@ router.get('/coach/history/:userId', async (req, res) => {
 // ==================== Signal Processing (proxy to Python AI) ====================
 
 // Analyze a video frame for focus and fatigue
-router.post('/signals/analyze-frame', async (req, res) => {
+router.post('/signals/analyze-frame', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const FormData = require('form-data');
@@ -339,7 +340,7 @@ router.post('/signals/analyze-frame', async (req, res) => {
 });
 
 // Get current signals for a user
-router.get('/signals/current/:userId', async (req, res) => {
+router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -357,7 +358,7 @@ router.get('/signals/current/:userId', async (req, res) => {
 });
 
 // Get signal history for a user
-router.get('/signals/history/:userId', async (req, res) => {
+router.get('/signals/history/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -377,7 +378,7 @@ router.get('/signals/history/:userId', async (req, res) => {
 });
 
 // Trigger signal processing for a user
-router.post('/signals/process', async (req, res) => {
+router.post('/signals/process', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -397,7 +398,7 @@ router.post('/signals/process', async (req, res) => {
 });
 
 // Get latest signal results for a user
-router.get('/signals/latest/:userId', async (req, res) => {
+router.get('/signals/latest/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -419,7 +420,7 @@ router.get('/signals/latest/:userId', async (req, res) => {
 // ── Review / Spaced Repetition Proxy Routes ──────────────────────────
 
 // Schedule a review for a completed task
-router.post('/reviews/schedule', async (req, res) => {
+router.post('/reviews/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -437,7 +438,7 @@ router.post('/reviews/schedule', async (req, res) => {
 });
 
 // Record a review result
-router.post('/reviews/record-result', async (req, res) => {
+router.post('/reviews/record-result', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -455,7 +456,7 @@ router.post('/reviews/record-result', async (req, res) => {
 });
 
 // Get pending reviews for a user
-router.get('/reviews/pending/:userId', async (req, res) => {
+router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -475,7 +476,7 @@ router.get('/reviews/pending/:userId', async (req, res) => {
 });
 
 // Get review stats for a user
-router.get('/reviews/stats/:userId', async (req, res) => {
+router.get('/reviews/stats/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';

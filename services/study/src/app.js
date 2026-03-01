@@ -32,9 +32,9 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 
 const app = express();
 
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing middleware with size limits
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Shared middleware
 app.use(securityMiddleware());
@@ -47,6 +47,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/v1/health', healthCheck('study'));
+
+// Rate limit file upload endpoints (5 req/min)
+const uploadLimiter = rateLimiter(5, 60000);
+app.post('/api/v1/study/courses/:courseId/files', uploadLimiter);
+app.post('/api/v1/study/subjects', uploadLimiter);
 
 // Protected study routes (require authentication)
 app.use('/api/v1/study/tasks', authenticate, taskRoutes);

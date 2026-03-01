@@ -14,7 +14,12 @@ const XP_REWARDS = {
   task_complete_medium: 20,
   task_complete_hard: 30,
   perfect_focus_session: 25,
-  daily_streak: 15
+  daily_streak: 15,
+  session_complete: 10,
+  // Social XP
+  friend_added: 5,
+  team_session: 20,
+  team_session_host: 30,
 };
 
 // Validation schema
@@ -79,6 +84,10 @@ router.post('/award-xp', async (req, res) => {
       profile.stats.tasksCompleted += 1;
     } else if (value.action === 'perfect_focus_session') {
       profile.stats.perfectSessions += 1;
+    } else if (value.action === 'friend_added') {
+      profile.stats.friendsAdded = (profile.stats.friendsAdded || 0) + 1;
+    } else if (value.action === 'team_session' || value.action === 'team_session_host') {
+      profile.stats.teamSessions = (profile.stats.teamSessions || 0) + 1;
     }
 
     await profile.save();

@@ -35,7 +35,30 @@ const userSchema = new mongoose.Schema({
   }],
   lastLogin: {
     type: Date
-  }
+  },
+  tier: {
+    type: String,
+    enum: ['trial', 'normal', 'vip', 'vip_plus'],
+    default: 'trial'
+  },
+  trialStartedAt: {
+    type: Date,
+    default: Date.now
+  },
+  trialExpiresAt: {
+    type: Date,
+    default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000)
+  },
+  tierChangedAt: {
+    type: Date
+  },
+  subscriptionId: {
+    type: String
+  },
+  verificationToken: { type: String },
+  verificationExpires: { type: Date },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date }
 }, {
   timestamps: true
 });

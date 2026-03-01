@@ -3,6 +3,7 @@ const Joi = require('joi');
 const axios = require('axios');
 const mongoose = require('mongoose');
 const { StudyPlan, Task, Course } = require('../models');
+const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
@@ -20,8 +21,8 @@ const schedulePlanSchema = Joi.object({
   allowLateNight: Joi.boolean().optional()
 });
 
-// Create study plan from goal (with optional course)
-router.post('/create', async (req, res) => {
+// Create study plan from goal (AI-powered)
+router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const { error } = createPlanSchema.validate(req.body);
     if (error) {
@@ -368,7 +369,7 @@ router.get('/:planId([0-9a-fA-F]{24})', async (req, res) => {
 });
 
 // Schedule a study plan (call Python AI scheduler)
-router.post('/:planId/schedule', async (req, res) => {
+router.post('/:planId/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const { error } = schedulePlanSchema.validate(req.body);
     if (error) {
@@ -535,7 +536,7 @@ router.delete('/:planId', async (req, res) => {
 });
 
 // Schedule user's tasks (all or filtered)
-router.post('/schedule-tasks', async (req, res) => {
+router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   console.log('=== Schedule tasks endpoint called ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
   console.log('User from auth:', req.user);

@@ -18,7 +18,8 @@
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "axios": "^1.13.5"
   },
   "devDependencies": {
     "eslint": "^8.56.0",

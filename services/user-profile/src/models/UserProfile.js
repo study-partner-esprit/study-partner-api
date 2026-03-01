@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const userProfileSchema = new mongoose.Schema(
   {
@@ -19,6 +20,24 @@ const userProfileSchema = new mongoose.Schema(
     nickname: {
       type: String,
       trim: true
+    },
+    friendCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: () => crypto.randomBytes(4).toString('hex').toUpperCase()
+    },
+    onlineStatus: {
+      type: String,
+      enum: ['online', 'studying', 'offline'],
+      default: 'offline'
+    },
+    lastSeenAt: { type: Date },
+    privacy: {
+      showOnlineStatus: { type: Boolean, default: true },
+      showStudyActivity: { type: Boolean, default: true },
+      showStats: { type: Boolean, default: true },
+      allowRequests: { type: String, enum: ['everyone', 'nobody'], default: 'everyone' }
     },
     level: {
       current: { type: Number, default: 1 },

@@ -85,6 +85,35 @@ const ACHIEVEMENT_CATALOG = [
     description: 'Maintain a 30-day streak',
     icon: '💎',
     condition: (stats) => stats.currentStreak >= 30
+  },
+  // Social achievements
+  {
+    id: 'first_friend',
+    name: 'Social Butterfly',
+    description: 'Add your first friend',
+    icon: '🤝',
+    condition: (stats) => (stats.friendsAdded || 0) >= 1
+  },
+  {
+    id: 'five_friends',
+    name: 'Study Circle',
+    description: 'Have 5 friends',
+    icon: '👥',
+    condition: (stats) => (stats.friendsAdded || 0) >= 5
+  },
+  {
+    id: 'first_team_session',
+    name: 'Team Player',
+    description: 'Complete your first team study session',
+    icon: '🎮',
+    condition: (stats) => (stats.teamSessions || 0) >= 1
+  },
+  {
+    id: 'ten_team_sessions',
+    name: 'Squad Leader',
+    description: 'Complete 10 team study sessions',
+    icon: '🏅',
+    condition: (stats) => (stats.teamSessions || 0) >= 10
   }
 ];
 
@@ -152,6 +181,14 @@ const gamificationSchema = new mongoose.Schema(
         default: 0
       },
       longestStreak: {
+        type: Number,
+        default: 0
+      },
+      friendsAdded: {
+        type: Number,
+        default: 0
+      },
+      teamSessions: {
         type: Number,
         default: 0
       }

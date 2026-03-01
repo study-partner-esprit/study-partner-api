@@ -19,7 +19,12 @@ const notificationSchema = new mongoose.Schema({
       'focus_drop',
       'achievement',
       'schedule_change',
-      'system'
+      'system',
+      'friend_request',
+      'friend_accepted',
+      'team_invite',
+      'team_join',
+      'friend_studying'
     ]
   },
   title: {

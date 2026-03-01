@@ -4,6 +4,7 @@ const path = require('path');
 const { Course, Subject } = require('../models');
 const axios = require('axios');
 const FormData = require('form-data');
+const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
@@ -73,8 +74,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create a new course
-router.post('/', upload.array('files', 10), async (req, res) => {
+// Create a new course (AI-powered, requires VIP+)
+router.post('/', tierGate('vip', 'vip_plus', 'trial'), upload.array('files', 10), async (req, res) => {
   try {
     const userId = req.user.userId;
     const { title, description, subject_id } = req.body;
@@ -291,8 +292,8 @@ router.delete('/:courseId', async (req, res) => {
   }
 });
 
-// Add files to an existing course
-router.post('/:courseId/files', upload.array('files', 10), async (req, res) => {
+// Add files to an existing course (AI re-processing)
+router.post('/:courseId/files', tierGate('vip', 'vip_plus', 'trial'), upload.array('files', 10), async (req, res) => {
   try {
     const { courseId } = req.params;
     const { user_id } = req.query;
@@ -418,6 +419,81 @@ router.post('/:courseId/files', upload.array('files', 10), async (req, res) => {
   } catch (error) {
     console.error('Error adding files to course:', error);
     res.status(500).json({ error: 'Failed to add files to course' });
+  }
+});
+
+// Create a manual course (no AI processing, available to all tiers including Normal)
+router.post('/manual', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { title, description, subject_id, topics } = req.body;
+
+    if (!title || !subject_id) {
+      return res.status(400).json({ error: 'title and subject_id are required' });
+    }
+
+    // Verify subject exists and belongs to user
+    const subject = await Subject.findOne({ _id: subject_id, userId });
+    if (!subject) {
+      return res.status(404).json({ error: 'Subject not found' });
+    }
+
+    // Create course record directly (no AI processing)
+    const course = new Course({
+      title,
+      description: description || '',
+      subjectId: subject_id,
+      userId,
+      status: 'completed',
+      topics: (topics || []).map(t => ({
+        title: t.title,
+        subtopics: (t.subtopics || []).map(sub => ({
+          id: sub.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: sub.title,
+          summary: sub.summary || '',
+          key_concepts: sub.key_concepts || [],
+          definitions: sub.definitions || [],
+          formulas: sub.formulas || [],
+          examples: sub.examples || [],
+          tokenized_chunks: []
+        }))
+      })),
+      files: [],
+      processedAt: new Date()
+    });
+
+    await course.save();
+
+    // Auto-award XP
+    try {
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
+        action: 'course_upload',
+        metadata: { courseId: course._id.toString(), title: course.title, manual: true }
+      }, {
+        headers: { 'Authorization': req.headers.authorization }
+      });
+    } catch (xpErr) {
+      console.warn('XP award failed for manual course:', xpErr.message);
+    }
+
+    res.status(201).json({
+      course: {
+        id: course._id.toString(),
+        title: course.title,
+        description: course.description,
+        subjectId: course.subjectId,
+        status: course.status,
+        topicsCount: course.topics?.length || 0,
+        filesCount: 0,
+        processedAt: course.processedAt,
+        createdAt: course.createdAt,
+        updatedAt: course.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Error creating manual course:', error);
+    res.status(500).json({ error: 'Failed to create manual course' });
   }
 });
 

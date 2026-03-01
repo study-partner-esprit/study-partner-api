@@ -4,5 +4,6 @@ module.exports = {
   ...require('./auth'),
   ...require('./database'),
   ...require('./middleware'),
+  ...require('./tierGate'),
   logger,
 };

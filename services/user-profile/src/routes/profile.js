@@ -299,4 +299,47 @@ router.delete('/goals/:goalId', async (req, res) => {
   res.json({ message: 'Goal deleted' });
 });
 
+// PUT /online-status — Update online status (called by notification service)
+router.put('/online-status', async (req, res) => {
+  try {
+    const { userId, onlineStatus } = req.body;
+    if (!userId || !['online', 'studying', 'offline'].includes(onlineStatus)) {
+      return res.status(400).json({ error: 'Invalid userId or status' });
+    }
+
+    const update = { onlineStatus };
+    if (onlineStatus === 'offline') {
+      update.lastSeenAt = new Date();
+    }
+
+    await UserProfile.findOneAndUpdate({ userId }, update, { upsert: false });
+    res.json({ message: 'Status updated' });
+  } catch (error) {
+    console.error('Error updating online status:', error);
+    res.status(500).json({ error: 'Failed to update status' });
+  }
+});
+
+// PUT /privacy — Update privacy settings
+router.put('/privacy', async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.body.userId;
+    const { showOnlineStatus, showStudyActivity, showStats, allowRequests } = req.body;
+
+    const profile = await UserProfile.findOne({ userId });
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+    if (showOnlineStatus !== undefined) profile.privacy.showOnlineStatus = showOnlineStatus;
+    if (showStudyActivity !== undefined) profile.privacy.showStudyActivity = showStudyActivity;
+    if (showStats !== undefined) profile.privacy.showStats = showStats;
+    if (allowRequests !== undefined) profile.privacy.allowRequests = allowRequests;
+
+    await profile.save();
+    res.json({ message: 'Privacy settings updated', privacy: profile.privacy });
+  } catch (error) {
+    console.error('Error updating privacy:', error);
+    res.status(500).json({ error: 'Failed to update privacy settings' });
+  }
+});
+
 module.exports = router;

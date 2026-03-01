@@ -102,16 +102,33 @@ function rateLimiter(maxRequests = 100, windowMs = 60000) {
 }
 
 /**
- * Health check endpoint handler
+ * Health check endpoint handler with readiness probe
  */
 function healthCheck(serviceName) {
-  return (req, res) => {
-    res.json({
+  return async (req, res) => {
+    const health = {
       status: 'healthy',
       service: serviceName,
       version: '1.0.0',
       timestamp: new Date().toISOString(),
-    });
+      uptime: process.uptime(),
+    };
+
+    // Check MongoDB connection if mongoose is loaded
+    try {
+      const mongoose = require('mongoose');
+      if (mongoose.connection.readyState !== 1) {
+        health.status = 'degraded';
+        health.db = 'disconnected';
+      } else {
+        health.db = 'connected';
+      }
+    } catch {
+      // No mongoose in this service (e.g., api-gateway)
+    }
+
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
   };
 }
 

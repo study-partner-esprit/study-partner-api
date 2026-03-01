@@ -35,8 +35,23 @@ app.use(corsMiddleware());
 app.use(loggingMiddleware);
 app.use(rateLimiter());
 
-// Health check
-app.get('/api/v1/health', healthCheck('ai-orchestrator'));
+// Health check (no DB check for ai-orchestrator)
+app.get('/api/v1/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'ai-orchestrator',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// Stricter rate limit for expensive AI operations (10 req/min)
+const aiRateLimiter = rateLimiter(10, 60000);
+app.use('/api/v1/ai/ingest', aiRateLimiter);
+app.use('/api/v1/ai/plan', aiRateLimiter);
+app.use('/api/v1/ai/coach', aiRateLimiter);
+app.use('/api/v1/ai/signals', aiRateLimiter);
 
 // Protected AI routes (require authentication)
 app.use('/api/v1/ai', authenticate, aiRoutes);
