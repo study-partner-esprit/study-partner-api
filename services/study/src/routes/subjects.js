@@ -88,6 +88,22 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     await subject.save();
 
+    // Auto-award XP for creating subject
+    try {
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+      const payload = {
+        action: 'subject_create',
+        metadata: { subjectId: subject._id.toString(), name: subject.name }
+      };
+      console.info('award-xp request ->', { url: `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, payload, auth: !!req.headers.authorization });
+      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, payload, {
+        headers: { 'Authorization': req.headers.authorization }
+      });
+    } catch (xpErr) {
+      const respData = xpErr && xpErr.response ? xpErr.response.data : null;
+      console.warn('XP award failed for subject creation:', xpErr && xpErr.message, 'responseData:', respData);
+    }
+
     res.status(201).json({
       subject: {
         id: subject._id.toString(),

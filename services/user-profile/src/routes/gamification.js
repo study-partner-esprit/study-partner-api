@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
 const Gamification = require('../models/Gamification');
+const Friendship = require('../models/Friendship');
 
 const router = express.Router();
 
@@ -9,6 +10,7 @@ const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http:/
 
 // XP rewards configuration
 const XP_REWARDS = {
+  subject_create: 25,
   course_upload: 50,
   task_complete_easy: 10,
   task_complete_medium: 20,
@@ -58,8 +60,10 @@ router.get('/', async (req, res) => {
 // Award XP
 router.post('/award-xp', async (req, res) => {
   try {
+    console.info('award-xp endpoint received request', { body: req.body, auth: !!req.headers.authorization });
     const { error, value } = awardXpSchema.validate(req.body);
     if (error) {
+      console.warn('award-xp validation failed:', error.details[0].message, 'body:', req.body);
       return res.status(400).json({ error: error.details[0].message });
     }
 
@@ -67,6 +71,7 @@ router.post('/award-xp', async (req, res) => {
     const xp = value.xp_amount || XP_REWARDS[value.action] || 0;
 
     if (xp === 0) {
+      console.warn('award-xp unknown action or zero xp:', value.action, 'payload:', req.body);
       return res.status(400).json({ error: `Unknown action: ${value.action}` });
     }
 
@@ -78,7 +83,9 @@ router.post('/award-xp', async (req, res) => {
     const result = profile.awardXp(xp, value.action, value.metadata);
 
     // Update stats based on action
-    if (value.action === 'course_upload') {
+    if (value.action === 'subject_create') {
+      profile.stats.subjectsCreated = (profile.stats.subjectsCreated || 0) + 1;
+    } else if (value.action === 'course_upload') {
       profile.stats.coursesUploaded += 1;
     } else if (value.action.startsWith('task_complete')) {
       profile.stats.tasksCompleted += 1;
@@ -146,8 +153,27 @@ router.post('/award-xp', async (req, res) => {
 router.get('/leaderboard', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
+    const type = req.query.type || 'friends'; // 'all' or 'friends' (default friends)
+    const userId = req.user.userId;
 
-    const leaderboard = await Gamification.find()
+    let query = Gamification.find();
+
+    if (type === 'friends') {
+      // Get friends' userIds
+      const friendships = await Friendship.find({
+        $or: [
+          { requester: userId, status: 'accepted' },
+          { recipient: userId, status: 'accepted' }
+        ]
+      });
+
+      const friendIds = friendships.map(f => f.requester === userId ? f.recipient : f.requester);
+      friendIds.push(userId); // include self?
+
+      query = query.where('userId').in(friendIds);
+    }
+
+    const leaderboard = await query
       .sort({ totalXp: -1 })
       .limit(limit)
       .select('userId totalXp level stats.coursesUploaded stats.tasksCompleted');

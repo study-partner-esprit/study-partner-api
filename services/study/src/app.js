@@ -32,6 +32,9 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 
 const app = express();
 
+// Trust proxy so express-rate-limit can correctly parse X-Forwarded-For in Docker
+app.set('trust proxy', true);
+
 // Body parsing middleware with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

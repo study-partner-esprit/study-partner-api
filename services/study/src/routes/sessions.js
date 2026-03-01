@@ -147,7 +147,7 @@ router.put('/:sessionId', async (req, res) => {
       });
 
       if (yesterdaySession) {
-        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
         await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
           action: 'daily_streak',
           metadata: { sessionId: session._id.toString() }
@@ -157,7 +157,7 @@ router.put('/:sessionId', async (req, res) => {
       }
 
       // Also award session_complete XP
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
       await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
         action: 'session_complete',
         metadata: { sessionId: session._id.toString(), duration: session.duration }

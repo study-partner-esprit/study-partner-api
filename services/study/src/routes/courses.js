@@ -164,7 +164,7 @@ router.post('/', tierGate('vip', 'vip_plus', 'trial'), upload.array('files', 10)
 
       // Auto-award XP on course upload
       try {
-        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
         await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
           action: 'course_upload',
           metadata: { courseId: course._id.toString(), title: course.title }

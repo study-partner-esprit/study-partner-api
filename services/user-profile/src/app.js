@@ -36,6 +36,8 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 
 const app = express();
 
+app.set('trust proxy', true);
+
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
