@@ -104,6 +104,8 @@ services:
       - PORT=3003
       - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - AI_SERVICE_URL=http://ai-service:8000
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/api/v1/health"]
       interval: 30s
