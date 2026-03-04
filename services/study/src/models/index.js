@@ -12,6 +12,40 @@ const studySessionSchema = new mongoose.Schema({
   topicId: {
     type: String
   },
+  // Course-based session fields
+  courseId: {
+    type: String,
+    index: true
+  },
+  studyPlanId: {
+    type: String,
+    index: true
+  },
+  mode: {
+    type: String,
+    enum: ['focus', 'pomodoro', 'exam'],
+    default: 'focus'
+  },
+  // Task-by-task progression
+  taskProgress: {
+    currentTaskIndex: { type: Number, default: 0 },
+    tasks: [{
+      taskId: String,
+      title: String,
+      description: String,
+      status: { type: String, enum: ['pending', 'in-progress', 'completed', 'skipped'], default: 'pending' },
+      startedAt: Date,
+      completedAt: Date,
+      xpEarned: { type: Number, default: 0 }
+    }],
+    totalTasks: { type: Number, default: 0 },
+    completedTasks: { type: Number, default: 0 }
+  },
+  // XP multiplier for team sessions
+  xpMultiplier: {
+    type: Number,
+    default: 1.0
+  },
   duration: {
     type: Number, // in minutes
   },

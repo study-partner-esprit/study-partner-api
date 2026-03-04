@@ -1,6 +1,7 @@
 const express = require('express');
 const Friendship = require('../models/Friendship');
 const UserProfile = require('../models/UserProfile');
+const Gamification = require('../models/Gamification');
 const axios = require('axios');
 
 const router = express.Router();
@@ -35,6 +36,11 @@ router.get('/', async (req, res) => {
     const profileMap = {};
     profiles.forEach(p => { profileMap[p.userId] = p; });
 
+    // Fetch actual levels from Gamification collection
+    const gamDocs = await Gamification.find({ userId: { $in: friendIds } }).select('userId level').lean();
+    const levelMap = {};
+    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+
     const friends = friendships.map(f => {
       const friendId = f.requester === userId ? f.recipient : f.requester;
       const profile = profileMap[friendId] || {};
@@ -43,7 +49,7 @@ router.get('/', async (req, res) => {
         userId: friendId,
         name: profile.nickname || 'User',
         avatar: profile.avatar,
-        level: profile.level?.current || 1,
+        level: levelMap[friendId] || 1,
         onlineStatus: profile.privacy?.showOnlineStatus !== false ? profile.onlineStatus : 'hidden',
         friendSince: f.updatedAt
       };
@@ -67,12 +73,16 @@ router.get('/requests/incoming', async (req, res) => {
     const profileMap = {};
     profiles.forEach(p => { profileMap[p.userId] = p; });
 
+    const gamDocs = await Gamification.find({ userId: { $in: userIds } }).select('userId level').lean();
+    const levelMap = {};
+    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+
     const result = requests.map(r => ({
       friendshipId: r._id,
       userId: r.requester,
       name: profileMap[r.requester]?.nickname || 'User',
       avatar: profileMap[r.requester]?.avatar,
-      level: profileMap[r.requester]?.level?.current || 1,
+      level: levelMap[r.requester] || 1,
       sentAt: r.createdAt
     }));
 
@@ -93,12 +103,16 @@ router.get('/requests/outgoing', async (req, res) => {
     const profileMap = {};
     profiles.forEach(p => { profileMap[p.userId] = p; });
 
+    const gamDocs = await Gamification.find({ userId: { $in: userIds } }).select('userId level').lean();
+    const levelMap = {};
+    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+
     const result = requests.map(r => ({
       friendshipId: r._id,
       userId: r.recipient,
       name: profileMap[r.recipient]?.nickname || 'User',
       avatar: profileMap[r.recipient]?.avatar,
-      level: profileMap[r.recipient]?.level?.current || 1,
+      level: levelMap[r.recipient] || 1,
       sentAt: r.createdAt
     }));
 
@@ -372,12 +386,17 @@ router.get('/search', async (req, res) => {
       friendshipMap[otherId] = f.status;
     });
 
+    // Batch-fetch Gamification levels for search results
+    const searchGamDocs = await Gamification.find({ userId: { $in: resultUserIds } }).select('userId level').lean();
+    const searchLevelMap = {};
+    searchGamDocs.forEach(g => { searchLevelMap[g.userId] = g.level; });
+
     res.json({
       results: profiles.map(p => ({
         userId: p.userId,
         name: p.nickname || 'User',
         avatar: p.avatar,
-        level: p.level?.current || 1,
+        level: searchLevelMap[p.userId] || 1,
         friendCode: p.friendCode,
         friendshipStatus: friendshipMap[p.userId] || null
       }))
@@ -405,12 +424,15 @@ router.get('/:friendId/profile', async (req, res) => {
     const profile = await UserProfile.findOne({ userId: friendId }).lean();
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
+    // Get actual level from Gamification
+    const gam = await Gamification.findOne({ userId: friendId }).select('level').lean();
+
     const isFriend = !!friendship;
     const result = {
       userId: profile.userId,
       name: profile.nickname || 'User',
       avatar: profile.avatar,
-      level: profile.level,
+      level: gam?.level || 1,
       bio: profile.bio,
       friendCode: profile.friendCode,
       onlineStatus: profile.privacy?.showOnlineStatus !== false ? profile.onlineStatus : 'hidden',
@@ -445,13 +467,16 @@ router.get('/online', async (req, res) => {
     }).lean();
 
     res.json({
-      online: onlineProfiles.map(p => ({
-        userId: p.userId,
-        name: p.nickname || 'User',
-        avatar: p.avatar,
-        level: p.level?.current || 1,
-        onlineStatus: p.onlineStatus
-      }))
+      online: onlineProfiles.map(p => {
+        // Note: for /online we skip extra Gamification lookup to keep it fast
+        return {
+          userId: p.userId,
+          name: p.nickname || 'User',
+          avatar: p.avatar,
+          level: p.level?.current || 1,
+          onlineStatus: p.onlineStatus
+        };
+      })
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch online friends' });

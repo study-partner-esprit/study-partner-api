@@ -99,7 +99,37 @@ const userProfileSchema = new mongoose.Schema(
           default: false
         }
       }
-    ]
+    ],
+    // Background Customization (Level 10 unlock)
+    backgroundSettings: {
+      enabled: { type: Boolean, default: false },
+      type: { type: String, enum: ['preset', 'uploaded', 'url'], default: 'preset' },
+      imageUrl: { type: String },
+      opacity: { type: Number, default: 0.3, min: 0.05, max: 0.5 },
+      blur: { type: Number, default: 5, min: 0, max: 10 },
+      position: { type: String, enum: ['cover', 'contain', 'repeat'], default: 'cover' },
+      uploadedAt: { type: Date }
+    },
+    // Animated Background (Level 20 unlock)
+    animatedBackgroundSettings: {
+      enabled: { type: Boolean, default: false },
+      type: { type: String, enum: ['preset', 'uploaded', 'url'], default: 'preset' },
+      videoUrl: { type: String },
+      fileName: { type: String },
+      opacity: { type: Number, default: 0.15, min: 0.05, max: 0.3 },
+      brightness: { type: Number, default: 0, min: -50, max: 50 },
+      saturation: { type: Number, default: 100, min: 0, max: 150 },
+      loop: { type: Boolean, default: true },
+      speed: { type: Number, default: 1, min: 0.5, max: 2 },
+      uploadedAt: { type: Date }
+    },
+    // Team Stats
+    teamStats: {
+      teamSessionsCompleted: { type: Number, default: 0 },
+      currentTeam: { type: String },
+      friendsInTeams: { type: Number, default: 0 },
+      preferredTeammates: [{ type: String }]
+    }
   },
   {
     timestamps: true

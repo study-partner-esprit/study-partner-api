@@ -11,7 +11,7 @@ const createSchema = Joi.object({
     'study_reminder', 'break_suggestion', 'plan_generated',
     'task_due', 'session_suspended', 'fatigue_alert',
     'focus_drop', 'achievement', 'level_up', 'quest_complete',
-    'schedule_change', 'system'
+    'schedule_change', 'system', 'team_invite'
   ).required(),
   title: Joi.string().max(200).required(),
   message: Joi.string().max(2000).required(),
@@ -43,6 +43,23 @@ router.get('/', async (req, res, next) => {
     const unreadCount = await Notification.countDocuments({ userId, status: 'unread' });
 
     res.json({ notifications, total, unreadCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/v1/notifications/broadcast — fire WS only, no DB storage ──
+router.post('/broadcast', async (req, res, next) => {
+  try {
+    const { userIds, payload } = req.body;
+    if (!Array.isArray(userIds) || !payload) {
+      return res.status(400).json({ error: 'userIds (array) and payload are required' });
+    }
+    const broadcastToUser = req.app.locals.broadcastToUser;
+    if (broadcastToUser) {
+      userIds.forEach(uid => broadcastToUser(uid, payload));
+    }
+    res.json({ delivered: userIds.length });
   } catch (err) {
     next(err);
   }

@@ -210,6 +210,221 @@ router.get('/stats/summary', async (req, res) => {
   });
 });
 
+// ==================== Session Setup & Task Progression ====================
+
+const { Course, StudyPlan, Task } = require('../models');
+
+// Utility: check if a string looks like a MongoDB ObjectId
+const isObjectId = (str) => /^[a-f\d]{24}$/i.test(str);
+
+// POST /setup — Initialize a course-based study session
+router.post('/setup', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { courseId, studyPlanId, mode } = req.body;
+
+    if (!courseId) return res.status(400).json({ error: 'courseId is required' });
+
+    // Load the course to get tasks/topics
+    const course = await Course.findOne({ _id: courseId, userId });
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    // Build task list from study plan tasks or course topics
+    let tasks = [];
+
+    if (studyPlanId) {
+      const plan = await StudyPlan.findOne({ _id: studyPlanId, userId });
+      if (plan && plan.taskGraph && plan.taskGraph.tasks) {
+        // Fetch Task documents linked to this plan so we can sync completion later
+        const planTaskDocs = await Task.find({ studyPlanId: studyPlanId.toString(), userId }).lean();
+
+        tasks = plan.taskGraph.tasks.map((t, index) => {
+          // Try to match by title (tasks are created in the same order as taskGraph.tasks)
+          const matchedDoc = planTaskDocs[index] || planTaskDocs.find(d => d.title === t.title);
+          return {
+            taskId: matchedDoc ? matchedDoc._id.toString() : (t.id || `task-${index}`),
+            title: t.title,
+            description: t.description || '',
+            status: 'pending',
+            xpEarned: 0
+          };
+        });
+      }
+    }
+
+    // Fallback: generate tasks from course topics/subtopics
+    if (tasks.length === 0 && course.topics) {
+      course.topics.forEach((topic, tIdx) => {
+        if (topic.subtopics && topic.subtopics.length > 0) {
+          topic.subtopics.forEach((sub, sIdx) => {
+            tasks.push({
+              taskId: sub.id || `t${tIdx}-s${sIdx}`,
+              title: sub.title || `${topic.title} - Part ${sIdx + 1}`,
+              description: sub.summary || '',
+              status: 'pending',
+              xpEarned: 0
+            });
+          });
+        } else {
+          tasks.push({
+            taskId: `topic-${tIdx}`,
+            title: topic.title,
+            description: '',
+            status: 'pending',
+            xpEarned: 0
+          });
+        }
+      });
+    }
+
+    const session = await StudySession.create({
+      userId,
+      courseId,
+      studyPlanId,
+      mode: mode || 'focus',
+      status: 'active',
+      type: 'solo',
+      startTime: new Date(),
+      taskProgress: {
+        currentTaskIndex: 0,
+        tasks,
+        totalTasks: tasks.length,
+        completedTasks: 0
+      },
+      xpMultiplier: 1.0
+    });
+
+    res.status(201).json({
+      message: 'Session setup complete',
+      session: {
+        _id: session._id,
+        courseId: session.courseId,
+        mode: session.mode,
+        type: session.type,
+        status: session.status,
+        taskProgress: session.taskProgress,
+        xpMultiplier: session.xpMultiplier
+      }
+    });
+  } catch (error) {
+    console.error('Error setting up session:', error);
+    res.status(500).json({ error: 'Failed to setup session' });
+  }
+});
+
+// POST /:sessionId/task/complete — Complete current task and move to next
+router.post('/:sessionId/task/complete', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId } = req.params;
+
+    const session = await StudySession.findOne({ _id: sessionId, status: 'active' });
+    if (!session) return res.status(404).json({ error: 'Active session not found' });
+
+    // Allow host or the session owner
+    const isParticipant = session.userId === userId ||
+      session.participants?.some(p => p.userId === userId && !p.leftAt);
+    if (!isParticipant && session.userId !== userId) {
+      return res.status(403).json({ error: 'Not a participant in this session' });
+    }
+
+    const { taskProgress } = session;
+    if (!taskProgress || !taskProgress.tasks || taskProgress.tasks.length === 0) {
+      return res.status(400).json({ error: 'No tasks in this session' });
+    }
+
+    const currentIndex = taskProgress.currentTaskIndex;
+    if (currentIndex >= taskProgress.tasks.length) {
+      return res.status(400).json({ error: 'All tasks already completed' });
+    }
+
+    // Mark current task as completed
+    const baseXP = 15;
+    const xpEarned = Math.round(baseXP * (session.xpMultiplier || 1.0));
+
+    const completedTaskId = taskProgress.tasks[currentIndex].taskId;
+    taskProgress.tasks[currentIndex].status = 'completed';
+    taskProgress.tasks[currentIndex].completedAt = new Date();
+    taskProgress.tasks[currentIndex].xpEarned = xpEarned;
+    taskProgress.completedTasks += 1;
+
+    // Move to next task
+    if (currentIndex + 1 < taskProgress.tasks.length) {
+      taskProgress.currentTaskIndex = currentIndex + 1;
+      taskProgress.tasks[currentIndex + 1].status = 'in-progress';
+      taskProgress.tasks[currentIndex + 1].startedAt = new Date();
+    }
+
+    session.markModified('taskProgress');
+    await session.save();
+
+    // Sync completion back to the Task collection if taskId is a real MongoDB ObjectId
+    if (completedTaskId && isObjectId(completedTaskId)) {
+      Task.findOneAndUpdate(
+        { _id: completedTaskId, userId: session.userId },
+        { status: 'completed', completedAt: new Date() }
+      ).catch(err => console.warn('Task sync failed:', err.message));
+    }
+
+    const allDone = taskProgress.completedTasks >= taskProgress.totalTasks;
+
+    res.json({
+      message: allDone ? 'All tasks completed!' : 'Task completed',
+      currentTaskIndex: taskProgress.currentTaskIndex,
+      completedTasks: taskProgress.completedTasks,
+      totalTasks: taskProgress.totalTasks,
+      xpEarned,
+      allTasksComplete: allDone,
+      nextTask: allDone ? null : taskProgress.tasks[taskProgress.currentTaskIndex]
+    });
+  } catch (error) {
+    console.error('Error completing task:', error);
+    res.status(500).json({ error: 'Failed to complete task' });
+  }
+});
+
+// POST /:sessionId/task/skip — Skip current task
+router.post('/:sessionId/task/skip', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId } = req.params;
+
+    const session = await StudySession.findOne({ _id: sessionId, status: 'active' });
+    if (!session) return res.status(404).json({ error: 'Active session not found' });
+
+    const { taskProgress } = session;
+    const currentIndex = taskProgress.currentTaskIndex;
+
+    if (currentIndex >= taskProgress.tasks.length) {
+      return res.status(400).json({ error: 'No more tasks to skip' });
+    }
+
+    taskProgress.tasks[currentIndex].status = 'skipped';
+    taskProgress.tasks[currentIndex].completedAt = new Date();
+
+    if (currentIndex + 1 < taskProgress.tasks.length) {
+      taskProgress.currentTaskIndex = currentIndex + 1;
+      taskProgress.tasks[currentIndex + 1].status = 'in-progress';
+      taskProgress.tasks[currentIndex + 1].startedAt = new Date();
+    }
+
+    session.markModified('taskProgress');
+    await session.save();
+
+    const allDone = currentIndex + 1 >= taskProgress.tasks.length;
+
+    res.json({
+      message: 'Task skipped',
+      currentTaskIndex: taskProgress.currentTaskIndex,
+      allTasksComplete: allDone,
+      nextTask: allDone ? null : taskProgress.tasks[taskProgress.currentTaskIndex]
+    });
+  } catch (error) {
+    console.error('Error skipping task:', error);
+    res.status(500).json({ error: 'Failed to skip task' });
+  }
+});
+
 // ==================== Team Session Endpoints ====================
 
 const crypto = require('crypto');
@@ -219,25 +434,64 @@ const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localho
 router.post('/team', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { taskId, topicId, maxParticipants } = req.body;
+    const { taskId, topicId, courseId, studyPlanId, mode, maxParticipants } = req.body;
 
-    const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase(); // 6-char code
+    const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+
+    // Build task list from course if provided
+    let tasks = [];
+    if (courseId) {
+      const course = await Course.findOne({ _id: courseId });
+      if (course && course.topics) {
+        course.topics.forEach((topic, tIdx) => {
+          if (topic.subtopics && topic.subtopics.length > 0) {
+            topic.subtopics.forEach((sub, sIdx) => {
+              tasks.push({
+                taskId: sub.id || `t${tIdx}-s${sIdx}`,
+                title: sub.title || `${topic.title} - Part ${sIdx + 1}`,
+                description: sub.summary || '',
+                status: 'pending',
+                xpEarned: 0
+              });
+            });
+          } else {
+            tasks.push({
+              taskId: `topic-${tIdx}`,
+              title: topic.title,
+              description: '',
+              status: 'pending',
+              xpEarned: 0
+            });
+          }
+        });
+      }
+    }
 
     const session = await StudySession.create({
       userId,
       taskId,
       topicId,
+      courseId,
+      studyPlanId,
+      mode: mode || 'focus',
       type: 'team',
       status: 'active',
       inviteCode,
-      maxParticipants: Math.min(maxParticipants || 5, 10),
+      maxParticipants: Math.min(maxParticipants || 4, 4),
       participants: [{
         userId,
         name: req.user.name || 'Host',
         role: 'host',
         joinedAt: new Date()
       }],
-      startTime: new Date()
+      startTime: new Date(),
+      taskProgress: tasks.length > 0 ? {
+        currentTaskIndex: 0,
+        tasks,
+        totalTasks: tasks.length,
+        completedTasks: 0
+      } : undefined,
+      xpMultiplier: 1.0 // Will be updated when session starts based on team size
     });
 
     res.status(201).json({
@@ -279,6 +533,12 @@ router.post('/team/:sessionId/join', async (req, res) => {
       role: 'member',
       joinedAt: new Date()
     });
+
+    // Update XP multiplier based on team size
+    const activeCount = session.participants.filter(p => !p.leftAt).length;
+    const multipliers = { 1: 1.0, 2: 1.15, 3: 1.2, 4: 1.25 };
+    session.xpMultiplier = multipliers[Math.min(activeCount, 4)] || 1.25;
+
     await session.save();
 
     // Notify host
@@ -294,6 +554,59 @@ router.post('/team/:sessionId/join', async (req, res) => {
 
     res.json({ message: 'Joined team session', session });
   } catch (error) {
+    res.status(500).json({ error: 'Failed to join session' });
+  }
+});
+
+// POST /team/join-by-code — Join session using invite code only (no sessionId needed)
+router.post('/team/join-by-code', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { inviteCode } = req.body;
+
+    if (!inviteCode) return res.status(400).json({ error: 'inviteCode is required' });
+
+    const session = await StudySession.findOne({
+      inviteCode: inviteCode.toUpperCase(),
+      type: 'team',
+      status: 'active'
+    });
+
+    if (!session) return res.status(404).json({ error: 'No active session found with that invite code' });
+    if (session.participants.some(p => p.userId === userId && !p.leftAt)) {
+      return res.status(409).json({ error: 'Already in this session' });
+    }
+    if (session.participants.filter(p => !p.leftAt).length >= session.maxParticipants) {
+      return res.status(400).json({ error: 'Session is full' });
+    }
+
+    session.participants.push({
+      userId,
+      name: req.user.name || 'Member',
+      role: 'member',
+      joinedAt: new Date()
+    });
+
+    const activeCount = session.participants.filter(p => !p.leftAt).length;
+    const multipliers = { 1: 1.0, 2: 1.15, 3: 1.2, 4: 1.25 };
+    session.xpMultiplier = multipliers[Math.min(activeCount, 4)] || 1.25;
+
+    await session.save();
+
+    // Notify host
+    try {
+      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, {
+        userId: session.userId,
+        type: 'team_join',
+        title: 'Someone joined your session',
+        message: `A study partner joined your team session!`,
+        metadata: { sessionId: session._id.toString() }
+      }, { headers: { Authorization: req.headers.authorization } });
+    } catch (err) { console.warn('Team join notification failed:', err.message); }
+
+    res.json({ message: 'Joined team session', session, sessionId: session._id.toString(), inviteCode: session.inviteCode });
+  } catch (error) {
+    console.error('Error joining by code:', error);
     res.status(500).json({ error: 'Failed to join session' });
   }
 });
@@ -321,25 +634,103 @@ router.post('/team/:sessionId/leave', async (req, res) => {
 router.post('/team/:sessionId/invite', async (req, res) => {
   try {
     const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!session) {
+      console.warn(`[Team Invite] Session not found: ${req.params.sessionId}`);
+      return res.status(404).json({ error: 'Session not found' });
+    }
 
     const { friendId } = req.body;
-    if (!friendId) return res.status(400).json({ error: 'friendId required' });
+    if (!friendId) {
+      console.warn('[Team Invite] friendId not provided in request body');
+      return res.status(400).json({ error: 'friendId required' });
+    }
+
+    console.log(`[Team Invite] Inviting ${friendId} to session ${session._id}`);
+
+    // Lookup inviter nickname and course title for a personalised notification
+    let inviterName = 'A friend';
+    let courseName = null;
+    try {
+      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+      const profileRes = await axios.get(`${USER_PROFILE_URL}/api/v1/users/profile`, {
+        headers: { Authorization: req.headers.authorization }
+      });
+      inviterName = profileRes.data?.nickname || profileRes.data?.profile?.nickname || inviterName;
+    } catch (_e) { /* best-effort */ }
+    if (session.courseId) {
+      try {
+        const { Course } = require('../models');
+        const course = await Course.findById(session.courseId).select('title').lean();
+        if (course) courseName = course.title;
+      } catch (_e) { /* best-effort */ }
+    }
 
     // Send team invite notification
     try {
-      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, {
+      const notificationPayload = {
         userId: friendId,
         type: 'team_invite',
-        title: 'Team Study Invite',
-        message: 'You\'ve been invited to a team study session!',
-        metadata: { sessionId: session._id.toString(), inviteCode: session.inviteCode }
-      }, { headers: { Authorization: req.headers.authorization } });
-    } catch (err) { console.warn('Team invite notification failed:', err.message); }
+        title: 'Game Room Invite',
+        message: `${inviterName} invited you to join a Game Room!`,
+        metadata: {
+          sessionId: session._id.toString(),
+          inviteCode: session.inviteCode,
+          inviterName,
+          ...(courseName && { courseName }),
+        }
+      };
+      
+      console.log('[Team Invite] Sending notification:', notificationPayload);
+      
+      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, notificationPayload, { 
+        headers: { Authorization: req.headers.authorization } 
+      });
+      
+      console.log(`[Team Invite] Notification sent successfully to ${friendId}`);
+    } catch (err) { 
+      console.warn('Team invite notification failed:', err.message, err.response?.data);
+    }
 
     res.json({ message: 'Invite sent' });
   } catch (error) {
+    console.error('[Team Invite] Error:', error);
     res.status(500).json({ error: 'Failed to send invite' });
+  }
+});
+
+// PUT /team/:sessionId/start — Leader starts the session for everyone
+router.put('/team/:sessionId/start', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.userId !== userId) return res.status(403).json({ error: 'Only the session leader can start' });
+
+    // Broadcast session_start to all active participants (including leader)
+    const activeUserIds = session.participants
+      .filter(p => !p.leftAt)
+      .map(p => p.userId);
+
+    // Also include the host if not already in participants list
+    if (!activeUserIds.includes(userId)) activeUserIds.push(userId);
+
+    try {
+      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications/broadcast`, {
+        userIds: activeUserIds,
+        payload: {
+          type: 'session_start',
+          sessionId: session._id.toString(),
+          inviteCode: session.inviteCode,
+        }
+      }, { headers: { Authorization: req.headers.authorization } });
+    } catch (err) {
+      console.warn('[Team Start] Broadcast failed:', err.message);
+    }
+
+    res.json({ message: 'Session started', sessionId: session._id.toString() });
+  } catch (error) {
+    console.error('[Team Start] Error:', error);
+    res.status(500).json({ error: 'Failed to start session' });
   }
 });
 

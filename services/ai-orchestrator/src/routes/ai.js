@@ -27,7 +27,11 @@ const scheduleTasksSchema = Joi.object({
 
 const coachAdviceSchema = Joi.object({
   ignored_count: Joi.number().min(0).optional().default(0),
-  do_not_disturb: Joi.boolean().optional().default(false)
+  do_not_disturb: Joi.boolean().optional().default(false),
+  focus_score: Joi.number().min(0).max(1).optional().allow(null),
+  focus_state: Joi.string().optional().allow(null, ''),
+  fatigue_score: Joi.number().min(0).max(1).optional().allow(null),
+  fatigue_state: Joi.string().optional().allow(null, ''),
 });
 
 // Course Ingestion Agent
@@ -230,18 +234,25 @@ router.post('/coach', tierGate('vip_plus', 'trial'), async (req, res) => {
   }
 
   const userId = req.user?.userId || 'anonymous'; // Fallback if auth not enabled
-  const { ignored_count = 0, do_not_disturb = false } = req.body;
+  const { ignored_count = 0, do_not_disturb = false, focus_score, focus_state, fatigue_score, fatigue_state } = req.body;
 
   try {
     // Forward request to Python AI service
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     
-    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/coach/decision`, {
+    const payload = {
       user_id: userId,
       ignored_count,
       do_not_disturb
-    });
+    };
+    // Attach live signals when provided by the frontend
+    if (focus_score != null) payload.focus_score = focus_score;
+    if (focus_state) payload.focus_state = focus_state;
+    if (fatigue_score != null) payload.fatigue_score = fatigue_score;
+    if (fatigue_state) payload.fatigue_state = fatigue_state;
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/coach/decision`, payload);
 
     // Return the coach's decision
     res.json({

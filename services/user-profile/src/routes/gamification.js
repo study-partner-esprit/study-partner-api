@@ -178,7 +178,20 @@ router.get('/leaderboard', async (req, res) => {
       .limit(limit)
       .select('userId totalXp level stats.coursesUploaded stats.tasksCompleted');
 
-    res.json(leaderboard);
+    // Attach nicknames from UserProfile
+    const UserProfile = require('../models/UserProfile');
+    const userIds = leaderboard.map(e => e.userId);
+    const profiles = await UserProfile.find({ userId: { $in: userIds } }).select('userId nickname').lean();
+    const nicknameMap = {};
+    profiles.forEach(p => { nicknameMap[p.userId] = p.nickname; });
+
+    const enriched = leaderboard.map(e => {
+      const obj = e.toObject ? e.toObject() : e;
+      obj.nickname = nicknameMap[obj.userId] || null;
+      return obj;
+    });
+
+    res.json(enriched);
   } catch (error) {
     console.error('Error fetching leaderboard:', error);
     res.status(500).json({ error: 'Failed to fetch leaderboard' });

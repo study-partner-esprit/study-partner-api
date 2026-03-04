@@ -106,6 +106,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - AI_SERVICE_URL=http://ai-service:8000
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/api/v1/health"]
       interval: 30s
