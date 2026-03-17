@@ -77,7 +77,7 @@ router.post('/register', async (req, res) => {
   });
 
   // Send verification email (non-blocking)
-  sendVerificationEmail(user.email, verificationToken).catch(err => {
+  sendVerificationEmail(user.email, verificationToken).catch((err) => {
     console.warn('Failed to send verification email:', err.message);
   });
 
@@ -163,14 +163,17 @@ router.post('/login', async (req, res) => {
 // Refresh token
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
-  
+
   if (!refreshToken) {
     return res.status(400).json({ error: 'Refresh token required' });
   }
 
   try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key');
-    
+    const decoded = jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key'
+    );
+
     // Fetch fresh user data for up-to-date tier
     const user = await User.findById(decoded.userId);
     const tier = user ? user.tier : decoded.tier || 'normal';
@@ -205,7 +208,7 @@ router.post('/refresh', async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   // User is attached to req by authenticate middleware
   const user = await User.findById(req.user.userId);
-  
+
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -225,7 +228,9 @@ router.put('/tier', authenticate, async (req, res) => {
   const { tier } = req.body;
   const validTiers = ['trial', 'normal', 'vip', 'vip_plus'];
   if (!tier || !validTiers.includes(tier)) {
-    return res.status(400).json({ error: 'Invalid tier. Must be one of: trial, normal, vip, vip_plus' });
+    return res
+      .status(400)
+      .json({ error: 'Invalid tier. Must be one of: trial, normal, vip, vip_plus' });
   }
 
   const user = await User.findById(req.user.userId);

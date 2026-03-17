@@ -42,7 +42,7 @@ app.get('/api/v1/health', (req, res) => {
     service: 'ai-orchestrator',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: process.uptime()
   });
 });
 
@@ -60,13 +60,17 @@ app.use('/api/v1/ai', authenticate, aiRoutes);
 console.log('[DEBUG] Registered routes:');
 app._router.stack.forEach((middleware) => {
   if (middleware.route) {
-    console.log(`  ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`);
+    console.log(
+      `  ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`
+    );
   } else if (middleware.name === 'router') {
     console.log(`  Router mounted at: ${middleware.regexp}`);
     if (middleware.handle.stack) {
       middleware.handle.stack.forEach((handler) => {
         if (handler.route) {
-          console.log(`    ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`);
+          console.log(
+            `    ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`
+          );
         }
       });
     }

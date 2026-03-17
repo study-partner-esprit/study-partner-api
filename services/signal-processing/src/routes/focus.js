@@ -102,7 +102,7 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
 
   if (totalPoints > 0) {
     const avgFocusLevel = dataPoints.reduce((sum, dp) => sum + dp.focusLevel, 0) / totalPoints;
-    const focusedPoints = dataPoints.filter(dp => !dp.isDistracted).length;
+    const focusedPoints = dataPoints.filter((dp) => !dp.isDistracted).length;
     const distractedPoints = totalPoints - focusedPoints;
 
     const duration = (session.endTime - session.startTime) / 1000; // seconds
@@ -144,12 +144,16 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
   if (session.focusScore && session.focusScore > 80) {
     try {
       const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
-      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-        action: 'perfect_focus_session',
-        metadata: { sessionId: session._id.toString(), focusScore: session.focusScore }
-      }, {
-        headers: { 'Authorization': req.headers.authorization }
-      });
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+        {
+          action: 'perfect_focus_session',
+          metadata: { sessionId: session._id.toString(), focusScore: session.focusScore }
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
     } catch (xpErr) {
       console.warn('XP award failed for perfect focus session:', xpErr.message);
     }
@@ -158,11 +162,15 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
   // Progress focus_session quests regardless of score
   try {
     const USER_PROFILE_URL_Q = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
-    await axios.post(`${USER_PROFILE_URL_Q}/api/v1/users/quests/progress`, {
-      action: 'focus_session'
-    }, {
-      headers: { 'Authorization': req.headers.authorization }
-    });
+    await axios.post(
+      `${USER_PROFILE_URL_Q}/api/v1/users/quests/progress`,
+      {
+        action: 'focus_session'
+      },
+      {
+        headers: { Authorization: req.headers.authorization }
+      }
+    );
   } catch (questErr) {
     console.warn('Quest progress failed for focus session:', questErr.message);
   }
@@ -215,9 +223,10 @@ router.get('/stats/summary', tierGate('vip_plus', 'trial'), async (req, res) => 
   const sessions = await FocusSession.find(filter);
 
   const totalSessions = sessions.length;
-  const avgFocusScore = sessions.length > 0
-    ? sessions.reduce((sum, s) => sum + (s.focusScore || 0), 0) / sessions.length
-    : 0;
+  const avgFocusScore =
+    sessions.length > 0
+      ? sessions.reduce((sum, s) => sum + (s.focusScore || 0), 0) / sessions.length
+      : 0;
   const totalFocusTime = sessions.reduce((sum, s) => sum + (s.summary?.totalFocusTime || 0), 0);
 
   res.json({

@@ -13,8 +13,8 @@ async function getTransporter() {
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
+        pass: process.env.SMTP_PASS
+      }
     });
   } else {
     // Dev: use Ethereal fake SMTP
@@ -25,8 +25,8 @@ async function getTransporter() {
       secure: false,
       auth: {
         user: testAccount.user,
-        pass: testAccount.pass,
-      },
+        pass: testAccount.pass
+      }
     });
     console.log('[Email] Using Ethereal test account:', testAccount.user);
   }
@@ -55,7 +55,7 @@ async function sendVerificationEmail(to, token) {
         <a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a>
         <p style="color:#888;font-size:12px;margin-top:24px;">If you didn't create an account, ignore this email. This link expires in 24 hours.</p>
       </div>
-    `,
+    `
   });
 
   console.log('[Email] Verification sent to', to, '| MessageId:', info.messageId);
@@ -82,7 +82,7 @@ async function sendPasswordResetEmail(to, token) {
         <a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>
         <p style="color:#888;font-size:12px;margin-top:24px;">If you didn't request this, ignore this email. This link expires in 1 hour.</p>
       </div>
-    `,
+    `
   });
 
   console.log('[Email] Reset sent to', to, '| MessageId:', info.messageId);

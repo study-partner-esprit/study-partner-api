@@ -10,12 +10,9 @@ const logger = winston.createLogger({
   defaultMeta: { service: process.env.SERVICE_NAME || 'study-partner' },
   transports: [
     new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    }),
-  ],
+      format: winston.format.combine(winston.format.colorize(), winston.format.simple())
+    })
+  ]
 });
 
 // If we're not in production, log to file as well
@@ -23,12 +20,12 @@ if (process.env.NODE_ENV !== 'production') {
   logger.add(
     new winston.transports.File({
       filename: 'logs/error.log',
-      level: 'error',
+      level: 'error'
     })
   );
   logger.add(
     new winston.transports.File({
-      filename: 'logs/combined.log',
+      filename: 'logs/combined.log'
     })
   );
 }

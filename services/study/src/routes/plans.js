@@ -74,11 +74,9 @@ router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
     }
 
     if (course.status !== 'completed') {
-      return res
-        .status(400)
-        .json({
-          error: 'Course is still being processed. Please wait until processing is complete.'
-        });
+      return res.status(400).json({
+        error: 'Course is still being processed. Please wait until processing is complete.'
+      });
     }
 
     // Call AI planner service
@@ -564,19 +562,21 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
 
     // Check for existing scheduled entries to prevent duplicates
     const calendarColl = mongoose.connection.collection('calendar');
-    const taskIdsToSchedule = tasks.map(t => t._id.toString());
-    const existingScheduled = await calendarColl.find({
-      userId,
-      taskId: { $in: taskIdsToSchedule },
-      source: 'auto'
-    }).toArray();
+    const taskIdsToSchedule = tasks.map((t) => t._id.toString());
+    const existingScheduled = await calendarColl
+      .find({
+        userId,
+        taskId: { $in: taskIdsToSchedule },
+        source: 'auto'
+      })
+      .toArray();
 
     console.log(`Found ${existingScheduled.length} already scheduled tasks`);
 
     if (existingScheduled.length > 0) {
       // Remove already scheduled tasks from the list
-      const scheduledTaskIds = new Set(existingScheduled.map(e => e.taskId));
-      tasks = tasks.filter(t => !scheduledTaskIds.has(t._id.toString()));
+      const scheduledTaskIds = new Set(existingScheduled.map((e) => e.taskId));
+      tasks = tasks.filter((t) => !scheduledTaskIds.has(t._id.toString()));
       console.log(`After filtering duplicates: ${tasks.length} tasks remain`);
 
       if (tasks.length === 0) {

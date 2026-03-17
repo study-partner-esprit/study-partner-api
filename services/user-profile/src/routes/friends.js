@@ -11,9 +11,17 @@ const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localho
 // Helper: send notification
 async function notify(userId, type, title, message, metadata, authHeader) {
   try {
-    await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, {
-      userId, type, title, message, metadata
-    }, { headers: { Authorization: authHeader } });
+    await axios.post(
+      `${NOTIFICATION_URL}/api/v1/notifications`,
+      {
+        userId,
+        type,
+        title,
+        message,
+        metadata
+      },
+      { headers: { Authorization: authHeader } }
+    );
   } catch (err) {
     console.warn('Notification send failed:', err.message);
   }
@@ -29,19 +37,28 @@ router.get('/', async (req, res) => {
     const friendships = await Friendship.find({
       $or: [{ requester: userId }, { recipient: userId }],
       status: 'accepted'
-    }).skip((page - 1) * limit).limit(limit).lean();
+    })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
 
-    const friendIds = friendships.map(f => f.requester === userId ? f.recipient : f.requester);
+    const friendIds = friendships.map((f) => (f.requester === userId ? f.recipient : f.requester));
     const profiles = await UserProfile.find({ userId: { $in: friendIds } }).lean();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.userId] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.userId] = p;
+    });
 
     // Fetch actual levels from Gamification collection
-    const gamDocs = await Gamification.find({ userId: { $in: friendIds } }).select('userId level').lean();
+    const gamDocs = await Gamification.find({ userId: { $in: friendIds } })
+      .select('userId level')
+      .lean();
     const levelMap = {};
-    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+    gamDocs.forEach((g) => {
+      levelMap[g.userId] = g.level;
+    });
 
-    const friends = friendships.map(f => {
+    const friends = friendships.map((f) => {
       const friendId = f.requester === userId ? f.recipient : f.requester;
       const profile = profileMap[friendId] || {};
       return {
@@ -66,18 +83,25 @@ router.get('/', async (req, res) => {
 router.get('/requests/incoming', async (req, res) => {
   try {
     const requests = await Friendship.find({ recipient: req.user.userId, status: 'pending' })
-      .sort({ createdAt: -1 }).lean();
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const userIds = requests.map(r => r.requester);
+    const userIds = requests.map((r) => r.requester);
     const profiles = await UserProfile.find({ userId: { $in: userIds } }).lean();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.userId] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.userId] = p;
+    });
 
-    const gamDocs = await Gamification.find({ userId: { $in: userIds } }).select('userId level').lean();
+    const gamDocs = await Gamification.find({ userId: { $in: userIds } })
+      .select('userId level')
+      .lean();
     const levelMap = {};
-    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+    gamDocs.forEach((g) => {
+      levelMap[g.userId] = g.level;
+    });
 
-    const result = requests.map(r => ({
+    const result = requests.map((r) => ({
       friendshipId: r._id,
       userId: r.requester,
       name: profileMap[r.requester]?.nickname || 'User',
@@ -96,18 +120,25 @@ router.get('/requests/incoming', async (req, res) => {
 router.get('/requests/outgoing', async (req, res) => {
   try {
     const requests = await Friendship.find({ requester: req.user.userId, status: 'pending' })
-      .sort({ createdAt: -1 }).lean();
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const userIds = requests.map(r => r.recipient);
+    const userIds = requests.map((r) => r.recipient);
     const profiles = await UserProfile.find({ userId: { $in: userIds } }).lean();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.userId] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.userId] = p;
+    });
 
-    const gamDocs = await Gamification.find({ userId: { $in: userIds } }).select('userId level').lean();
+    const gamDocs = await Gamification.find({ userId: { $in: userIds } })
+      .select('userId level')
+      .lean();
     const levelMap = {};
-    gamDocs.forEach(g => { levelMap[g.userId] = g.level; });
+    gamDocs.forEach((g) => {
+      levelMap[g.userId] = g.level;
+    });
 
-    const result = requests.map(r => ({
+    const result = requests.map((r) => ({
       friendshipId: r._id,
       userId: r.recipient,
       name: profileMap[r.recipient]?.nickname || 'User',
@@ -138,7 +169,8 @@ router.post('/request', async (req, res) => {
     }
 
     if (!recipientId) return res.status(400).json({ error: 'userId or friendCode required' });
-    if (recipientId === requesterId) return res.status(400).json({ error: 'Cannot friend yourself' });
+    if (recipientId === requesterId)
+      return res.status(400).json({ error: 'Cannot friend yourself' });
 
     // Check if blocked
     const blocked = await Friendship.findOne({
@@ -165,7 +197,8 @@ router.post('/request', async (req, res) => {
 
     if (existing) {
       if (existing.status === 'accepted') return res.status(409).json({ error: 'Already friends' });
-      if (existing.status === 'pending') return res.status(409).json({ error: 'Request already pending' });
+      if (existing.status === 'pending')
+        return res.status(409).json({ error: 'Request already pending' });
       if (existing.status === 'rejected') {
         // 7-day cooldown after rejection
         const cooldownEnd = new Date(existing.updatedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -177,8 +210,14 @@ router.post('/request', async (req, res) => {
         existing.requester = requesterId;
         existing.recipient = recipientId;
         await existing.save();
-        await notify(recipientId, 'friend_request', 'New Friend Request',
-          `Someone wants to be your friend!`, { friendshipId: existing._id }, req.headers.authorization);
+        await notify(
+          recipientId,
+          'friend_request',
+          'New Friend Request',
+          `Someone wants to be your friend!`,
+          { friendshipId: existing._id },
+          req.headers.authorization
+        );
         return res.json({ message: 'Friend request sent', friendship: existing });
       }
     }
@@ -186,8 +225,14 @@ router.post('/request', async (req, res) => {
     const friendship = await Friendship.create({ requester: requesterId, recipient: recipientId });
 
     // Send notification
-    await notify(recipientId, 'friend_request', 'New Friend Request',
-      `Someone wants to be your friend!`, { friendshipId: friendship._id }, req.headers.authorization);
+    await notify(
+      recipientId,
+      'friend_request',
+      'New Friend Request',
+      `Someone wants to be your friend!`,
+      { friendshipId: friendship._id },
+      req.headers.authorization
+    );
 
     res.status(201).json({ message: 'Friend request sent', friendship });
   } catch (error) {
@@ -212,16 +257,27 @@ router.put('/request/:friendshipId/accept', async (req, res) => {
     await friendship.save();
 
     // Notify requester
-    await notify(friendship.requester, 'friend_accepted', 'Friend Request Accepted',
-      'Your friend request was accepted!', { friendshipId: friendship._id }, req.headers.authorization);
+    await notify(
+      friendship.requester,
+      'friend_accepted',
+      'Friend Request Accepted',
+      'Your friend request was accepted!',
+      { friendshipId: friendship._id },
+      req.headers.authorization
+    );
 
     // Award XP
     try {
       const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
       for (const uid of [friendship.requester, friendship.recipient]) {
-        await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-          action: 'friend_added', metadata: { friendshipId: friendship._id.toString() }
-        }, { headers: { Authorization: req.headers.authorization } });
+        await axios.post(
+          `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+          {
+            action: 'friend_added',
+            metadata: { friendshipId: friendship._id.toString() }
+          },
+          { headers: { Authorization: req.headers.authorization } }
+        );
       }
     } catch (xpErr) {
       console.warn('Friend XP award failed:', xpErr.message);
@@ -329,11 +385,11 @@ router.delete('/block/:userId', async (req, res) => {
 router.get('/blocked', async (req, res) => {
   try {
     const blocked = await Friendship.find({ requester: req.user.userId, status: 'blocked' }).lean();
-    const userIds = blocked.map(b => b.recipient);
+    const userIds = blocked.map((b) => b.recipient);
     const profiles = await UserProfile.find({ userId: { $in: userIds } }).lean();
 
     res.json({
-      blocked: profiles.map(p => ({
+      blocked: profiles.map((p) => ({
         userId: p.userId,
         name: p.nickname || 'User',
         avatar: p.avatar
@@ -358,41 +414,42 @@ router.get('/search', async (req, res) => {
         { recipient: userId, status: 'blocked' }
       ]
     }).lean();
-    const blockedIds = blockedDocs.map(b => b.requester === userId ? b.recipient : b.requester);
+    const blockedIds = blockedDocs.map((b) => (b.requester === userId ? b.recipient : b.requester));
     blockedIds.push(userId); // exclude self
 
     const query = {
       userId: { $nin: blockedIds },
-      $or: [
-        { nickname: { $regex: q, $options: 'i' } },
-        { friendCode: q.toUpperCase() }
-      ]
+      $or: [{ nickname: { $regex: q, $options: 'i' } }, { friendCode: q.toUpperCase() }]
     };
 
     const profiles = await UserProfile.find(query).limit(20).lean();
 
     // Check friendship status for each result
-    const resultUserIds = profiles.map(p => p.userId);
+    const resultUserIds = profiles.map((p) => p.userId);
     const friendships = await Friendship.find({
-      $or: resultUserIds.flatMap(fid => [
+      $or: resultUserIds.flatMap((fid) => [
         { requester: userId, recipient: fid },
         { requester: fid, recipient: userId }
       ])
     }).lean();
 
     const friendshipMap = {};
-    friendships.forEach(f => {
+    friendships.forEach((f) => {
       const otherId = f.requester === userId ? f.recipient : f.requester;
       friendshipMap[otherId] = f.status;
     });
 
     // Batch-fetch Gamification levels for search results
-    const searchGamDocs = await Gamification.find({ userId: { $in: resultUserIds } }).select('userId level').lean();
+    const searchGamDocs = await Gamification.find({ userId: { $in: resultUserIds } })
+      .select('userId level')
+      .lean();
     const searchLevelMap = {};
-    searchGamDocs.forEach(g => { searchLevelMap[g.userId] = g.level; });
+    searchGamDocs.forEach((g) => {
+      searchLevelMap[g.userId] = g.level;
+    });
 
     res.json({
-      results: profiles.map(p => ({
+      results: profiles.map((p) => ({
         userId: p.userId,
         name: p.nickname || 'User',
         avatar: p.avatar,
@@ -459,7 +516,7 @@ router.get('/online', async (req, res) => {
       status: 'accepted'
     }).lean();
 
-    const friendIds = friendships.map(f => f.requester === userId ? f.recipient : f.requester);
+    const friendIds = friendships.map((f) => (f.requester === userId ? f.recipient : f.requester));
     const onlineProfiles = await UserProfile.find({
       userId: { $in: friendIds },
       onlineStatus: { $ne: 'offline' },
@@ -467,7 +524,7 @@ router.get('/online', async (req, res) => {
     }).lean();
 
     res.json({
-      online: onlineProfiles.map(p => {
+      online: onlineProfiles.map((p) => {
         // Note: for /online we skip extra Gamification lookup to keep it fast
         return {
           userId: p.userId,
@@ -501,7 +558,7 @@ router.get('/count', async (req, res) => {
       $or: [{ requester: userId }, { recipient: userId }],
       status: 'accepted'
     }).lean();
-    const friendIds = friendships.map(f => f.requester === userId ? f.recipient : f.requester);
+    const friendIds = friendships.map((f) => (f.requester === userId ? f.recipient : f.requester));
     const online = await UserProfile.countDocuments({
       userId: { $in: friendIds },
       onlineStatus: { $ne: 'offline' }

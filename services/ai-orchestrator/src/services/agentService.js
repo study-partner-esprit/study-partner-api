@@ -19,7 +19,7 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://study-partner-ai:50
 async function executeAIAgent(agentType, payload) {
   try {
     logger.info(`Executing AI agent: ${agentType}`);
-    
+
     const response = await axios.post(`${AI_SERVICE_URL}/api/agents/${agentType}`, payload, {
       headers: {
         'Content-Type': 'application/json'
@@ -31,7 +31,7 @@ async function executeAIAgent(agentType, payload) {
     return response.data;
   } catch (error) {
     logger.error(`AI agent ${agentType} failed:`, error.message);
-    
+
     if (error.response) {
       // AI service returned an error
       throw new Error(error.response.data.error || 'AI agent execution failed');

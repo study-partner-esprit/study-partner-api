@@ -65,13 +65,13 @@ router.put('/users/:userId/tier', async (req, res) => {
 // GET /admin/stats — Tier distribution
 router.get('/stats', async (req, res) => {
   try {
-    const stats = await User.aggregate([
-      { $group: { _id: '$tier', count: { $sum: 1 } } }
-    ]);
+    const stats = await User.aggregate([{ $group: { _id: '$tier', count: { $sum: 1 } } }]);
 
     const total = await User.countDocuments();
     const distribution = {};
-    stats.forEach(s => { distribution[s._id || 'unknown'] = s.count; });
+    stats.forEach((s) => {
+      distribution[s._id || 'unknown'] = s.count;
+    });
 
     res.json({ total, distribution });
   } catch (error) {

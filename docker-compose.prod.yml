@@ -141,6 +141,8 @@ services:
     restart: always
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - APIFY_API_KEY=${APIFY_API_KEY:-}
+      - HF_API_KEY=${HF_API_KEY:-}
     depends_on:
       mongodb:
         condition: service_healthy

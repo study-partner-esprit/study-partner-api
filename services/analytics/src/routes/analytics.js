@@ -6,17 +6,19 @@ const router = express.Router();
 
 // Validation schema
 const trackEventSchema = Joi.object({
-  eventType: Joi.string().valid(
-    'study_session_started',
-    'study_session_completed',
-    'task_created',
-    'task_completed',
-    'course_ingested',
-    'plan_generated',
-    'focus_tracked',
-    'login',
-    'profile_updated'
-  ).required(),
+  eventType: Joi.string()
+    .valid(
+      'study_session_started',
+      'study_session_completed',
+      'task_created',
+      'task_completed',
+      'course_ingested',
+      'plan_generated',
+      'focus_tracked',
+      'login',
+      'profile_updated'
+    )
+    .required(),
   metadata: Joi.object().optional()
 });
 
@@ -51,9 +53,7 @@ router.get('/timeline', async (req, res) => {
     if (endDate) filter.timestamp.$lte = new Date(endDate);
   }
 
-  const events = await AnalyticsEvent.find(filter)
-    .sort({ timestamp: -1 })
-    .limit(parseInt(limit));
+  const events = await AnalyticsEvent.find(filter).sort({ timestamp: -1 }).limit(parseInt(limit));
 
   res.json({ events });
 });
@@ -80,7 +80,7 @@ router.get('/summary', async (req, res) => {
 
   // Calculate streaks
   const dailyActivity = {};
-  events.forEach(event => {
+  events.forEach((event) => {
     const date = event.timestamp.toISOString().split('T')[0];
     dailyActivity[date] = true;
   });
@@ -91,8 +91,10 @@ router.get('/summary', async (req, res) => {
   let streakCount = 0;
 
   for (let i = sortedDates.length - 1; i >= 0; i--) {
-    if (i === sortedDates.length - 1 || 
-        new Date(sortedDates[i + 1]) - new Date(sortedDates[i]) === 86400000) {
+    if (
+      i === sortedDates.length - 1 ||
+      new Date(sortedDates[i + 1]) - new Date(sortedDates[i]) === 86400000
+    ) {
       streakCount++;
       currentStreak = streakCount;
       longestStreak = Math.max(longestStreak, streakCount);
@@ -157,16 +159,14 @@ router.get('/insights', async (req, res) => {
   });
 
   // Calculate insights
-  const studySessions = events.filter(e => e.eventType === 'study_session_completed');
-  const completedTasks = events.filter(e => e.eventType === 'task_completed');
-  
+  const studySessions = events.filter((e) => e.eventType === 'study_session_completed');
+  const completedTasks = events.filter((e) => e.eventType === 'task_completed');
+
   const totalStudyTime = studySessions.reduce((sum, e) => {
     return sum + (e.metadata?.duration || 0);
   }, 0);
 
-  const avgStudyTime = studySessions.length > 0 
-    ? totalStudyTime / studySessions.length 
-    : 0;
+  const avgStudyTime = studySessions.length > 0 ? totalStudyTime / studySessions.length : 0;
 
   // Calculate most active day of the week
   const dayOfWeekCount = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
@@ -176,7 +176,7 @@ router.get('/insights', async (req, res) => {
   for (const session of studySessions) {
     const dayOfWeek = new Date(session.timestamp).getDay();
     dayOfWeekCount[dayOfWeek]++;
-    dayOfWeekDuration[dayOfWeek] += (session.metadata?.duration || 0);
+    dayOfWeekDuration[dayOfWeek] += session.metadata?.duration || 0;
   }
 
   // Find the day with the highest weighted activity score
@@ -196,7 +196,8 @@ router.get('/insights', async (req, res) => {
         name: dayNames[day],
         sessionCount: dayOfWeekCount[day],
         totalDuration: Math.round(dayOfWeekDuration[day]),
-        avgDuration: dayOfWeekCount[day] > 0 ? Math.round(dayOfWeekDuration[day] / dayOfWeekCount[day]) : 0
+        avgDuration:
+          dayOfWeekCount[day] > 0 ? Math.round(dayOfWeekDuration[day] / dayOfWeekCount[day]) : 0
       };
     }
   }
@@ -209,7 +210,7 @@ router.get('/insights', async (req, res) => {
       hourlyActivity[hour] = { count: 0, totalDuration: 0 };
     }
     hourlyActivity[hour].count++;
-    hourlyActivity[hour].totalDuration += (session.metadata?.duration || 0);
+    hourlyActivity[hour].totalDuration += session.metadata?.duration || 0;
   }
 
   let peakHour = null;
@@ -222,7 +223,7 @@ router.get('/insights', async (req, res) => {
   }
 
   // Weekly consistency: how many distinct days of the week had at least one study session
-  const activeDaysCount = Object.values(dayOfWeekCount).filter(count => count > 0).length;
+  const activeDaysCount = Object.values(dayOfWeekCount).filter((count) => count > 0).length;
   const weeklyConsistencyScore = Math.round((activeDaysCount / 7) * 100);
 
   const insights = {
@@ -239,9 +240,10 @@ router.get('/insights', async (req, res) => {
       sessions: dayOfWeekCount[i],
       totalDuration: Math.round(dayOfWeekDuration[i])
     })),
-    productivity: completedTasks.length > 0 
-      ? Math.round((completedTasks.length / (completedTasks.length + studySessions.length)) * 100)
-      : 0
+    productivity:
+      completedTasks.length > 0
+        ? Math.round((completedTasks.length / (completedTasks.length + studySessions.length)) * 100)
+        : 0
   };
 
   res.json({ insights });

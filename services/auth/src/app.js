@@ -13,7 +13,11 @@ const { authenticate } = require('@study-partner/shared/auth');
 
 // --- Environment validation (fail-fast on missing secrets) ---
 const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
-const INSECURE_DEFAULTS = ['your-super-secret-jwt-key-change-in-production', 'your-secret-key', 'change-me'];
+const INSECURE_DEFAULTS = [
+  'your-super-secret-jwt-key-change-in-production',
+  'your-secret-key',
+  'change-me'
+];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
     console.error(`[FATAL] Missing required environment variable: ${key}`);
@@ -21,7 +25,9 @@ for (const key of REQUIRED_ENV) {
   }
 }
 if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
-  console.error('[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.');
+  console.error(
+    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
+  );
   process.exit(1);
 }
 

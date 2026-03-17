@@ -6,7 +6,11 @@
   "scripts": {
     "test": "echo \"No tests yet\""
   },
-  "keywords": ["study-partner", "shared", "utilities"],
+  "keywords": [
+    "study-partner",
+    "shared",
+    "utilities"
+  ],
   "author": "Study Partner Team",
   "license": "MIT",
   "dependencies": {

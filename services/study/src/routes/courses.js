@@ -75,170 +75,184 @@ router.get('/', async (req, res) => {
 });
 
 // Create a new course (AI-powered, requires VIP+)
-router.post('/', tierGate('vip', 'vip_plus', 'trial'), upload.array('files', 10), async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { title, description, subject_id } = req.body;
-
-    if (!title || !subject_id) {
-      return res.status(400).json({ error: 'title and subject_id are required' });
-    }
-
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'At least one file is required' });
-    }
-
-    // Verify subject exists and belongs to user
-    const subject = await Subject.findOne({ _id: subject_id, userId });
-    if (!subject) {
-      return res.status(404).json({ error: 'Subject not found' });
-    }
-
-    // Create course record with processing status
-    const course = new Course({
-      title,
-      description,
-      subjectId: subject_id,
-      userId,
-      status: 'processing',
-      files: req.files.map((file) => ({
-        filename: file.filename,
-        originalName: file.originalname,
-        size: file.size
-      }))
-    });
-
-    await course.save();
-
-    // Send files to AI service for processing
+router.post(
+  '/',
+  tierGate('vip', 'vip_plus', 'trial'),
+  upload.array('files', 10),
+  async (req, res) => {
     try {
-      const formData = new FormData();
+      const userId = req.user.userId;
+      const { title, description, subject_id } = req.body;
 
-      // Add course data
-      formData.append('course_title', title);
-      formData.append('user_id', userId);
-      formData.append('subject_id', subject_id);
+      if (!title || !subject_id) {
+        return res.status(400).json({ error: 'title and subject_id are required' });
+      }
 
-      // Add files
-      req.files.forEach((file) => {
-        const fileBuffer = require('fs').readFileSync(file.path);
-        formData.append('files', fileBuffer, {
-          filename: file.originalname,
-          contentType: file.mimetype,
-          knownLength: file.size
-        });
-      });
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'At least one file is required' });
+      }
 
-      // Call AI service
-      const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-      const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
-        timeout: 300000 // 5 minutes timeout
-      });
+      // Verify subject exists and belongs to user
+      const subject = await Subject.findOne({ _id: subject_id, userId });
+      if (!subject) {
+        return res.status(404).json({ error: 'Subject not found' });
+      }
 
-      console.log('AI service response:', JSON.stringify(aiResponse.data, null, 2));
-
-      // Transform AI service topics format to match our schema
-      const aiTopics = aiResponse.data.topics || [];
-      const transformedTopics = aiTopics.map((topic) => ({
-        title: topic.title,
-        subtopics: (topic.subtopics || []).map((sub) => ({
-          id: sub.id,
-          title: sub.title,
-          summary: sub.summary,
-          key_concepts: sub.key_concepts || [],
-          definitions: sub.definitions || [],
-          formulas: sub.formulas || [],
-          examples: sub.examples || [],
-          tokenized_chunks: sub.tokenized_chunks || []
+      // Create course record with processing status
+      const course = new Course({
+        title,
+        description,
+        subjectId: subject_id,
+        userId,
+        status: 'processing',
+        files: req.files.map((file) => ({
+          filename: file.filename,
+          originalName: file.originalname,
+          size: file.size
         }))
-      }));
+      });
 
-      // Update course with processed data
-      course.topics = transformedTopics;
-      course.aiCourseId = aiResponse.data.course_id; // Link to AI service course
-      course.status = 'completed';
-      course.processedAt = new Date();
       await course.save();
 
-      console.log('Course saved with', transformedTopics.length, 'topics');
-
-      // Auto-award XP on course upload
+      // Send files to AI service for processing
       try {
-        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-        await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-          action: 'course_upload',
-          metadata: { courseId: course._id.toString(), title: course.title }
-        }, {
-          headers: { 'Authorization': req.headers.authorization }
+        const formData = new FormData();
+
+        // Add course data
+        formData.append('course_title', title);
+        formData.append('user_id', userId);
+        formData.append('subject_id', subject_id);
+
+        // Add files
+        req.files.forEach((file) => {
+          const fileBuffer = require('fs').readFileSync(file.path);
+          formData.append('files', fileBuffer, {
+            filename: file.originalname,
+            contentType: file.mimetype,
+            knownLength: file.size
+          });
         });
-        // Progress quests
-        await axios.post(`${USER_PROFILE_URL}/api/v1/users/quests/progress`, {
-          action: 'course_upload'
-        }, {
-          headers: { 'Authorization': req.headers.authorization }
+
+        // Call AI service
+        const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
+          timeout: 300000 // 5 minutes timeout
         });
-      } catch (xpErr) {
-        console.warn('XP/Quest award failed for course upload:', xpErr.message);
+
+        console.log('AI service response:', JSON.stringify(aiResponse.data, null, 2));
+
+        // Transform AI service topics format to match our schema
+        const aiTopics = aiResponse.data.topics || [];
+        const transformedTopics = aiTopics.map((topic) => ({
+          title: topic.title,
+          subtopics: (topic.subtopics || []).map((sub) => ({
+            id: sub.id,
+            title: sub.title,
+            summary: sub.summary,
+            key_concepts: sub.key_concepts || [],
+            definitions: sub.definitions || [],
+            formulas: sub.formulas || [],
+            examples: sub.examples || [],
+            tokenized_chunks: sub.tokenized_chunks || []
+          }))
+        }));
+
+        // Update course with processed data
+        course.topics = transformedTopics;
+        course.aiCourseId = aiResponse.data.course_id; // Link to AI service course
+        course.status = 'completed';
+        course.processedAt = new Date();
+        await course.save();
+
+        console.log('Course saved with', transformedTopics.length, 'topics');
+
+        // Auto-award XP on course upload
+        try {
+          const USER_PROFILE_URL =
+            process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+          await axios.post(
+            `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+            {
+              action: 'course_upload',
+              metadata: { courseId: course._id.toString(), title: course.title }
+            },
+            {
+              headers: { Authorization: req.headers.authorization }
+            }
+          );
+          // Progress quests
+          await axios.post(
+            `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
+            {
+              action: 'course_upload'
+            },
+            {
+              headers: { Authorization: req.headers.authorization }
+            }
+          );
+        } catch (xpErr) {
+          console.warn('XP/Quest award failed for course upload:', xpErr.message);
+        }
+
+        // Clean up uploaded files
+        req.files.forEach((file) => {
+          try {
+            require('fs').unlinkSync(file.path);
+          } catch (err) {
+            console.warn(`Failed to cleanup file ${file.path}:`, err);
+          }
+        });
+      } catch (aiError) {
+        console.error('❌ AI service error:', aiError.message);
+        console.error('Error details:', aiError.response?.data || aiError);
+
+        // Update course status to failed
+        course.status = 'failed';
+        course.processedAt = new Date();
+        course.warning = `AI service processing failed: ${aiError.message}`;
+        await course.save();
+
+        // Clean up uploaded files
+        req.files.forEach((file) => {
+          try {
+            require('fs').unlinkSync(file.path);
+          } catch (err) {
+            console.warn(`Failed to cleanup file ${file.path}:`, err);
+          }
+        });
+
+        return res.status(500).json({
+          error: 'Course processing failed',
+          message: aiError.message,
+          course: {
+            id: course._id,
+            title: course.title,
+            status: 'failed'
+          }
+        });
       }
 
-      // Clean up uploaded files
-      req.files.forEach((file) => {
-        try {
-          require('fs').unlinkSync(file.path);
-        } catch (err) {
-          console.warn(`Failed to cleanup file ${file.path}:`, err);
-        }
-      });
-    } catch (aiError) {
-      console.error('❌ AI service error:', aiError.message);
-      console.error('Error details:', aiError.response?.data || aiError);
-
-      // Update course status to failed
-      course.status = 'failed';
-      course.processedAt = new Date();
-      course.warning = `AI service processing failed: ${aiError.message}`;
-      await course.save();
-
-      // Clean up uploaded files
-      req.files.forEach((file) => {
-        try {
-          require('fs').unlinkSync(file.path);
-        } catch (err) {
-          console.warn(`Failed to cleanup file ${file.path}:`, err);
-        }
-      });
-
-      return res.status(500).json({
-        error: 'Course processing failed',
-        message: aiError.message,
+      return res.status(201).json({
         course: {
-          id: course._id,
+          id: course._id.toString(),
           title: course.title,
-          status: 'failed'
+          description: course.description,
+          subjectId: course.subjectId,
+          status: course.status,
+          topicsCount: course.topics?.length || 0,
+          filesCount: course.files?.length || 0,
+          aiCourseId: course.aiCourseId,
+          processedAt: course.processedAt,
+          createdAt: course.createdAt,
+          updatedAt: course.updatedAt
         }
       });
+    } catch (error) {
+      console.error('Error creating course:', error);
+      res.status(500).json({ error: 'Failed to create course' });
     }
-
-    return res.status(201).json({
-      course: {
-        id: course._id.toString(),
-        title: course.title,
-        description: course.description,
-        subjectId: course.subjectId,
-        status: course.status,
-        topicsCount: course.topics?.length || 0,
-        filesCount: course.files?.length || 0,
-        aiCourseId: course.aiCourseId,
-        processedAt: course.processedAt,
-        createdAt: course.createdAt,
-        updatedAt: course.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Error creating course:', error);
-    res.status(500).json({ error: 'Failed to create course' });
   }
-});
+);
 
 // Get a specific course
 router.get('/:courseId', async (req, res) => {
@@ -293,134 +307,139 @@ router.delete('/:courseId', async (req, res) => {
 });
 
 // Add files to an existing course (AI re-processing)
-router.post('/:courseId/files', tierGate('vip', 'vip_plus', 'trial'), upload.array('files', 10), async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({ error: 'user_id is required' });
-    }
-
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'At least one file is required' });
-    }
-
-    // Find the course
-    const course = await Course.findOne({ _id: courseId, userId: user_id });
-    if (!course) {
-      return res.status(404).json({ error: 'Course not found' });
-    }
-
-    // Add new files to the course
-    const newFiles = req.files.map((file) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      size: file.size,
-      uploadedAt: new Date()
-    }));
-
-    course.files.push(...newFiles);
-    course.status = 'processing';
-    await course.save();
-
-    // Prepare all files for re-processing
-    const allFiles = course.files
-      .map((file) => {
-        // For existing files, we need to check if they still exist or recreate them
-        // For now, we'll only process the new files since old ones might be deleted
-        // In a production system, you'd want to store files permanently
-        const filePath = path.join('uploads', file.filename);
-        if (require('fs').existsSync(filePath)) {
-          return {
-            path: filePath,
-            originalname: file.originalName,
-            mimetype: 'application/pdf' // Assume PDF for now
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
-
-    // Add the new uploaded files
-    allFiles.push(...req.files);
-
-    // Send all files to AI service for re-processing
+router.post(
+  '/:courseId/files',
+  tierGate('vip', 'vip_plus', 'trial'),
+  upload.array('files', 10),
+  async (req, res) => {
     try {
-      const formData = new FormData();
+      const { courseId } = req.params;
+      const { user_id } = req.query;
 
-      // Add course data
-      formData.append('course_title', course.title);
-      formData.append('user_id', user_id);
-      formData.append('subject_id', course.subjectId);
+      if (!user_id) {
+        return res.status(400).json({ error: 'user_id is required' });
+      }
 
-      // Add all files
-      allFiles.forEach((file) => {
-        const fileBuffer = require('fs').readFileSync(file.path);
-        formData.append('files', fileBuffer, {
-          filename: file.originalname || file.originalName,
-          contentType: file.mimetype || 'application/pdf',
-          knownLength: file.size
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'At least one file is required' });
+      }
+
+      // Find the course
+      const course = await Course.findOne({ _id: courseId, userId: user_id });
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+
+      // Add new files to the course
+      const newFiles = req.files.map((file) => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        size: file.size,
+        uploadedAt: new Date()
+      }));
+
+      course.files.push(...newFiles);
+      course.status = 'processing';
+      await course.save();
+
+      // Prepare all files for re-processing
+      const allFiles = course.files
+        .map((file) => {
+          // For existing files, we need to check if they still exist or recreate them
+          // For now, we'll only process the new files since old ones might be deleted
+          // In a production system, you'd want to store files permanently
+          const filePath = path.join('uploads', file.filename);
+          if (require('fs').existsSync(filePath)) {
+            return {
+              path: filePath,
+              originalname: file.originalName,
+              mimetype: 'application/pdf' // Assume PDF for now
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      // Add the new uploaded files
+      allFiles.push(...req.files);
+
+      // Send all files to AI service for re-processing
+      try {
+        const formData = new FormData();
+
+        // Add course data
+        formData.append('course_title', course.title);
+        formData.append('user_id', user_id);
+        formData.append('subject_id', course.subjectId);
+
+        // Add all files
+        allFiles.forEach((file) => {
+          const fileBuffer = require('fs').readFileSync(file.path);
+          formData.append('files', fileBuffer, {
+            filename: file.originalname || file.originalName,
+            contentType: file.mimetype || 'application/pdf',
+            knownLength: file.size
+          });
         });
-      });
 
-      // Call AI service
-      const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-      const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
-        timeout: 300000 // 5 minutes timeout
-      });
+        // Call AI service
+        const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
+          timeout: 300000 // 5 minutes timeout
+        });
 
-      // Update course with re-processed data
-      course.topics = aiResponse.data.topics || [];
-      course.status = 'completed';
-      course.processedAt = new Date();
-      await course.save();
+        // Update course with re-processed data
+        course.topics = aiResponse.data.topics || [];
+        course.status = 'completed';
+        course.processedAt = new Date();
+        await course.save();
 
-      // Clean up uploaded files
-      req.files.forEach((file) => {
-        try {
-          require('fs').unlinkSync(file.path);
-        } catch (err) {
-          console.warn(`Failed to cleanup file ${file.path}:`, err);
-        }
-      });
-    } catch (aiError) {
-      course.status = 'failed';
-      await course.save();
+        // Clean up uploaded files
+        req.files.forEach((file) => {
+          try {
+            require('fs').unlinkSync(file.path);
+          } catch (err) {
+            console.warn(`Failed to cleanup file ${file.path}:`, err);
+          }
+        });
+      } catch (aiError) {
+        course.status = 'failed';
+        await course.save();
 
-      return res.status(500).json({
-        error: 'Files added but re-processing failed',
+        return res.status(500).json({
+          error: 'Files added but re-processing failed',
+          course: {
+            id: course._id.toString(),
+            title: course.title,
+            status: course.status,
+            filesCount: course.files?.length || 0,
+            files: course.files
+          }
+        });
+      }
+
+      return res.json({
+        message: 'Files added and course re-processed successfully',
         course: {
           id: course._id.toString(),
           title: course.title,
+          description: course.description,
+          subjectId: course.subjectId,
           status: course.status,
+          topics: course.topics,
+          files: course.files,
+          topicsCount: course.topics?.length || 0,
           filesCount: course.files?.length || 0,
-          files: course.files
+          processedAt: course.processedAt,
+          updatedAt: course.updatedAt
         }
       });
+    } catch (error) {
+      console.error('Error adding files to course:', error);
+      res.status(500).json({ error: 'Failed to add files to course' });
     }
-
-    return res.json({
-      message: 'Files added and course re-processed successfully',
-      course: {
-        id: course._id.toString(),
-        title: course.title,
-        description: course.description,
-        subjectId: course.subjectId,
-        status: course.status,
-        topics: course.topics,
-        files: course.files,
-        topicsCount: course.topics?.length || 0,
-        filesCount: course.files?.length || 0,
-        processedAt: course.processedAt,
-        updatedAt: course.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Error adding files to course:', error);
-    res.status(500).json({ error: 'Failed to add files to course' });
   }
-});
+);
 
 // Create a manual course (no AI processing, available to all tiers including Normal)
 router.post('/manual', async (req, res) => {
@@ -445,9 +464,9 @@ router.post('/manual', async (req, res) => {
       subjectId: subject_id,
       userId,
       status: 'completed',
-      topics: (topics || []).map(t => ({
+      topics: (topics || []).map((t) => ({
         title: t.title,
-        subtopics: (t.subtopics || []).map(sub => ({
+        subtopics: (t.subtopics || []).map((sub) => ({
           id: sub.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           title: sub.title,
           summary: sub.summary || '',
@@ -467,12 +486,16 @@ router.post('/manual', async (req, res) => {
     // Auto-award XP
     try {
       const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
-      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-        action: 'course_upload',
-        metadata: { courseId: course._id.toString(), title: course.title, manual: true }
-      }, {
-        headers: { 'Authorization': req.headers.authorization }
-      });
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+        {
+          action: 'course_upload',
+          metadata: { courseId: course._id.toString(), title: course.title, manual: true }
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
     } catch (xpErr) {
       console.warn('XP award failed for manual course:', xpErr.message);
     }

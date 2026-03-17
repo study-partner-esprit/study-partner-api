@@ -44,12 +44,16 @@ const app = express();
 app.use(express.json());
 
 // Fake auth middleware for /me
-app.use('/api/v1/auth', (req, res, next) => {
-  if (req.headers.authorization) {
-    req.user = { userId: '507f1f77bcf86cd799439011' };
-  }
-  next();
-}, authRoutes);
+app.use(
+  '/api/v1/auth',
+  (req, res, next) => {
+    if (req.headers.authorization) {
+      req.user = { userId: '507f1f77bcf86cd799439011' };
+    }
+    next();
+  },
+  authRoutes
+);
 
 // Use supertest
 const request = require('supertest');
@@ -87,9 +91,7 @@ describe('Auth Service', () => {
     });
 
     it('should reject invalid payload', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({ email: 'not-an-email' });
+      const res = await request(app).post('/api/v1/auth/register').send({ email: 'not-an-email' });
 
       expect(res.status).toBe(400);
     });
@@ -135,9 +137,7 @@ describe('Auth Service', () => {
   // ── Refresh ──────────────────────────────────
   describe('POST /api/v1/auth/refresh', () => {
     it('should reject missing refresh token', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/refresh')
-        .send({});
+      const res = await request(app).post('/api/v1/auth/refresh').send({});
 
       expect(res.status).toBe(400);
     });

@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 function securityMiddleware() {
   return helmet({
     contentSecurityPolicy: false, // Disabled for API-only services
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
   });
 }
 
@@ -19,16 +19,14 @@ function securityMiddleware() {
  */
 function corsMiddleware() {
   const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
     : ['http://localhost:5173', 'http://localhost:3000'];
 
   return cors({
-    origin: process.env.NODE_ENV === 'production'
-      ? allowedOrigins
-      : true, // allow all in development
+    origin: process.env.NODE_ENV === 'production' ? allowedOrigins : true, // allow all in development
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization']
   });
 }
 
@@ -45,7 +43,7 @@ function loggingMiddleware(req, res, next) {
     requestId,
     method: req.method,
     path: req.path,
-    ip: req.ip,
+    ip: req.ip
   });
 
   // Log response
@@ -56,7 +54,7 @@ function loggingMiddleware(req, res, next) {
       {
         requestId,
         statusCode: res.statusCode,
-        duration,
+        duration
       }
     );
   });
@@ -73,7 +71,7 @@ function errorHandler(err, req, res, next) {
   logger.error(`[${requestId}] Error:`, {
     requestId,
     error: err.message,
-    stack: err.stack,
+    stack: err.stack
   });
 
   const statusCode = err.statusCode || 500;
@@ -82,7 +80,7 @@ function errorHandler(err, req, res, next) {
   res.status(statusCode).json({
     error: message,
     requestId,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 }
 
@@ -97,7 +95,7 @@ function rateLimiter(maxRequests = 100, windowMs = 60000) {
     max: maxRequests,
     message: 'Too many requests, please try again later.',
     standardHeaders: true,
-    legacyHeaders: false,
+    legacyHeaders: false
   });
 }
 
@@ -111,7 +109,7 @@ function healthCheck(serviceName) {
       service: serviceName,
       version: '1.0.0',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
+      uptime: process.uptime()
     };
 
     // Check MongoDB connection if mongoose is loaded
@@ -138,5 +136,5 @@ module.exports = {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck,
+  healthCheck
 };

@@ -63,6 +63,18 @@ const addGoalSchema = Joi.object({
   deadline: Joi.date().optional()
 });
 
+const requireUserLevel = async (userId, minLevel) => {
+  const Gamification = require('../models/Gamification');
+  let gamification = await Gamification.findOne({ userId });
+  if (!gamification) {
+    gamification = await Gamification.create({ userId });
+  }
+  return {
+    level: gamification.level || 1,
+    allowed: (gamification.level || 1) >= minLevel
+  };
+};
+
 // Get profile
 router.get('/', async (req, res) => {
   const userId = req.user.userId;
@@ -383,6 +395,16 @@ router.post('/background/apply', async (req, res) => {
     const userId = req.user.userId;
     const { imageUrl, type, opacity, blur, position, enabled } = req.body;
 
+    const gate = await requireUserLevel(userId, 10);
+    if (!gate.allowed) {
+      return res.status(403).json({
+        error: 'Background customization unlocks at level 10',
+        code: 'LEVEL_REQUIRED',
+        requiredLevel: 10,
+        currentLevel: gate.level
+      });
+    }
+
     const profile = await UserProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
@@ -408,6 +430,16 @@ router.post('/background/apply', async (req, res) => {
 router.post('/background/upload', upload.single('backgroundImage'), async (req, res) => {
   try {
     const userId = req.user.userId;
+    const gate = await requireUserLevel(userId, 10);
+    if (!gate.allowed) {
+      return res.status(403).json({
+        error: 'Background customization unlocks at level 10',
+        code: 'LEVEL_REQUIRED',
+        requiredLevel: 10,
+        currentLevel: gate.level
+      });
+    }
+
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
 
     const mime = req.file.mimetype || 'application/octet-stream';
@@ -437,42 +469,66 @@ router.post('/background/upload', upload.single('backgroundImage'), async (req, 
 });
 
 // POST /animated-background/upload — Upload custom animated background video (Level 20+)
-router.post('/animated-background/upload', uploadVideo.single('animatedVideo'), async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    if (!req.file) return res.status(400).json({ error: 'No video file provided' });
+router.post(
+  '/animated-background/upload',
+  uploadVideo.single('animatedVideo'),
+  async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const gate = await requireUserLevel(userId, 20);
+      if (!gate.allowed) {
+        return res.status(403).json({
+          error: 'Animated backgrounds unlock at level 20',
+          code: 'LEVEL_REQUIRED',
+          requiredLevel: 20,
+          currentLevel: gate.level
+        });
+      }
 
-    const mime = req.file.mimetype || 'video/mp4';
-    const b64 = req.file.buffer.toString('base64');
-    const videoUrl = `data:${mime};base64,${b64}`;
+      if (!req.file) return res.status(400).json({ error: 'No video file provided' });
 
-    const profile = await UserProfile.findOne({ userId });
-    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      const mime = req.file.mimetype || 'video/mp4';
+      const b64 = req.file.buffer.toString('base64');
+      const videoUrl = `data:${mime};base64,${b64}`;
 
-    profile.animatedBackgroundSettings = {
-      ...profile.animatedBackgroundSettings,
-      enabled: true,
-      type: 'uploaded',
-      videoUrl,
-      uploadedAt: new Date()
-    };
+      const profile = await UserProfile.findOne({ userId });
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
-    await profile.save();
-    res.json({
-      message: 'Animated background video uploaded',
-      animatedBackgroundSettings: profile.animatedBackgroundSettings
-    });
-  } catch (error) {
-    console.error('Error uploading animated background:', error);
-    res.status(500).json({ error: 'Failed to upload animated background' });
+      profile.animatedBackgroundSettings = {
+        ...profile.animatedBackgroundSettings,
+        enabled: true,
+        type: 'uploaded',
+        videoUrl,
+        uploadedAt: new Date()
+      };
+
+      await profile.save();
+      res.json({
+        message: 'Animated background video uploaded',
+        animatedBackgroundSettings: profile.animatedBackgroundSettings
+      });
+    } catch (error) {
+      console.error('Error uploading animated background:', error);
+      res.status(500).json({ error: 'Failed to upload animated background' });
+    }
   }
-});
+);
 
 // POST /animated-background/apply — Apply animated background settings (Level 20+)
 router.post('/animated-background/apply', async (req, res) => {
   try {
     const userId = req.user.userId;
     const { videoUrl, type, opacity, brightness, saturation, loop, speed, enabled } = req.body;
+
+    const gate = await requireUserLevel(userId, 20);
+    if (!gate.allowed) {
+      return res.status(403).json({
+        error: 'Animated backgrounds unlock at level 20',
+        code: 'LEVEL_REQUIRED',
+        requiredLevel: 20,
+        currentLevel: gate.level
+      });
+    }
 
     const profile = await UserProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
@@ -490,7 +546,10 @@ router.post('/animated-background/apply', async (req, res) => {
     };
 
     await profile.save();
-    res.json({ message: 'Animated background applied', animatedBackgroundSettings: profile.animatedBackgroundSettings });
+    res.json({
+      message: 'Animated background applied',
+      animatedBackgroundSettings: profile.animatedBackgroundSettings
+    });
   } catch (error) {
     console.error('Error applying animated background:', error);
     res.status(500).json({ error: 'Failed to apply animated background' });
@@ -500,16 +559,76 @@ router.post('/animated-background/apply', async (req, res) => {
 // GET /background/presets — Get preset backgrounds gallery
 router.get('/background/presets', async (req, res) => {
   const presets = [
-    { id: 'space-1', name: 'Cosmic Nebula', category: 'space', imageUrl: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'space-2', name: 'Deep Space', category: 'space', imageUrl: 'https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'nature-1', name: 'Mountain Lake', category: 'nature', imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'nature-2', name: 'Northern Lights', category: 'nature', imageUrl: 'https://images.unsplash.com/photo-1483347756197-71ef80e95f73?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'urban-1', name: 'City Lights', category: 'urban', imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'urban-2', name: 'Neon Streets', category: 'urban', imageUrl: 'https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'abstract-1', name: 'Dark Gradient', category: 'abstract', imageUrl: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'abstract-2', name: 'Purple Waves', category: 'abstract', imageUrl: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'gaming-1', name: 'Cyberpunk', category: 'gaming', imageUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80' },
-    { id: 'gaming-2', name: 'Retro Grid', category: 'gaming', imageUrl: 'https://images.unsplash.com/photo-1614294149010-950b698f72c0?auto=format&fit=crop&w=1920&q=80' },
+    {
+      id: 'space-1',
+      name: 'Cosmic Nebula',
+      category: 'space',
+      imageUrl:
+        'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'space-2',
+      name: 'Deep Space',
+      category: 'space',
+      imageUrl:
+        'https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'nature-1',
+      name: 'Mountain Lake',
+      category: 'nature',
+      imageUrl:
+        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'nature-2',
+      name: 'Northern Lights',
+      category: 'nature',
+      imageUrl:
+        'https://images.unsplash.com/photo-1483347756197-71ef80e95f73?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'urban-1',
+      name: 'City Lights',
+      category: 'urban',
+      imageUrl:
+        'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'urban-2',
+      name: 'Neon Streets',
+      category: 'urban',
+      imageUrl:
+        'https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'abstract-1',
+      name: 'Dark Gradient',
+      category: 'abstract',
+      imageUrl:
+        'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'abstract-2',
+      name: 'Purple Waves',
+      category: 'abstract',
+      imageUrl:
+        'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'gaming-1',
+      name: 'Cyberpunk',
+      category: 'gaming',
+      imageUrl:
+        'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80'
+    },
+    {
+      id: 'gaming-2',
+      name: 'Retro Grid',
+      category: 'gaming',
+      imageUrl:
+        'https://images.unsplash.com/photo-1614294149010-950b698f72c0?auto=format&fit=crop&w=1920&q=80'
+    }
   ];
   res.json({ presets });
 });
@@ -518,12 +637,60 @@ router.get('/background/presets', async (req, res) => {
 router.get('/animated-background/presets', async (req, res) => {
   // These are placeholder URLs — in production these would be hosted on a CDN
   const presets = [
-    { id: 'anim-space-1', name: 'Starfield', category: 'space', thumbnailUrl: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 30 },
-    { id: 'anim-nature-1', name: 'Rain Drops', category: 'nature', thumbnailUrl: 'https://images.unsplash.com/photo-1428592953211-077101b2021b?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 20 },
-    { id: 'anim-nature-2', name: 'Ocean Waves', category: 'nature', thumbnailUrl: 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 25 },
-    { id: 'anim-urban-1', name: 'Neon City', category: 'urban', thumbnailUrl: 'https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 15 },
-    { id: 'anim-abstract-1', name: 'Particles', category: 'abstract', thumbnailUrl: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 30 },
-    { id: 'anim-gaming-1', name: 'Pixel Rain', category: 'gaming', thumbnailUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=60', videoUrl: '', duration: 20 },
+    {
+      id: 'anim-space-1',
+      name: 'Starfield',
+      category: 'space',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 30
+    },
+    {
+      id: 'anim-nature-1',
+      name: 'Rain Drops',
+      category: 'nature',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1428592953211-077101b2021b?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 20
+    },
+    {
+      id: 'anim-nature-2',
+      name: 'Ocean Waves',
+      category: 'nature',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 25
+    },
+    {
+      id: 'anim-urban-1',
+      name: 'Neon City',
+      category: 'urban',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 15
+    },
+    {
+      id: 'anim-abstract-1',
+      name: 'Particles',
+      category: 'abstract',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 30
+    },
+    {
+      id: 'anim-gaming-1',
+      name: 'Pixel Rain',
+      category: 'gaming',
+      thumbnailUrl:
+        'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=60',
+      videoUrl: '',
+      duration: 20
+    }
   ];
   res.json({ presets });
 });
@@ -541,7 +708,7 @@ router.get('/level', async (req, res) => {
     const level = gamification.level;
     const totalXP = gamification.totalXp;
     const nextLevelXP = level * 100;
-    const xpProgress = Math.round((totalXP % 100));
+    const xpProgress = Math.round(totalXP % 100);
 
     const unlockedFeatures = [];
     if (level >= 10) unlockedFeatures.push('wallpaper');

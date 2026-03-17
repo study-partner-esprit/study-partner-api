@@ -15,7 +15,9 @@ const mockCourse = {
   title: 'Test Course',
   status: 'active',
   modules: [],
-  toJSON: function () { return { ...this }; },
+  toJSON: function () {
+    return { ...this };
+  },
   save: jest.fn().mockResolvedValue(true)
 };
 
@@ -29,7 +31,9 @@ const mockPlan = {
     { _id: 'task-1', title: 'Task 1', status: 'pending', duration_minutes: 30 },
     { _id: 'task-2', title: 'Task 2', status: 'pending', duration_minutes: 45 }
   ],
-  toJSON: function () { return { ...this }; },
+  toJSON: function () {
+    return { ...this };
+  },
   save: jest.fn().mockResolvedValue(true)
 };
 

@@ -23,7 +23,10 @@ async function startServer() {
         logger.info('AI service is healthy');
       }
     } catch (aiError) {
-      logger.warn('AI service health check failed - AI features may be unavailable:', aiError.message);
+      logger.warn(
+        'AI service health check failed - AI features may be unavailable:',
+        aiError.message
+      );
     }
 
     // Start server

@@ -21,7 +21,7 @@ const XP_REWARDS = {
   // Social XP
   friend_added: 5,
   team_session: 20,
-  team_session_host: 30,
+  team_session_host: 30
 };
 
 // Validation schema
@@ -60,7 +60,10 @@ router.get('/', async (req, res) => {
 // Award XP
 router.post('/award-xp', async (req, res) => {
   try {
-    console.info('award-xp endpoint received request', { body: req.body, auth: !!req.headers.authorization });
+    console.info('award-xp endpoint received request', {
+      body: req.body,
+      auth: !!req.headers.authorization
+    });
     const { error, value } = awardXpSchema.validate(req.body);
     if (error) {
       console.warn('award-xp validation failed:', error.details[0].message, 'body:', req.body);
@@ -167,7 +170,9 @@ router.get('/leaderboard', async (req, res) => {
         ]
       });
 
-      const friendIds = friendships.map(f => f.requester === userId ? f.recipient : f.requester);
+      const friendIds = friendships.map((f) =>
+        f.requester === userId ? f.recipient : f.requester
+      );
       friendIds.push(userId); // include self?
 
       query = query.where('userId').in(friendIds);
@@ -180,12 +185,16 @@ router.get('/leaderboard', async (req, res) => {
 
     // Attach nicknames from UserProfile
     const UserProfile = require('../models/UserProfile');
-    const userIds = leaderboard.map(e => e.userId);
-    const profiles = await UserProfile.find({ userId: { $in: userIds } }).select('userId nickname').lean();
+    const userIds = leaderboard.map((e) => e.userId);
+    const profiles = await UserProfile.find({ userId: { $in: userIds } })
+      .select('userId nickname')
+      .lean();
     const nicknameMap = {};
-    profiles.forEach(p => { nicknameMap[p.userId] = p.nickname; });
+    profiles.forEach((p) => {
+      nicknameMap[p.userId] = p.nickname;
+    });
 
-    const enriched = leaderboard.map(e => {
+    const enriched = leaderboard.map((e) => {
       const obj = e.toObject ? e.toObject() : e;
       obj.nickname = nicknameMap[obj.userId] || null;
       return obj;

@@ -19,7 +19,10 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
-if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET?.includes('change-in-production')) {
+if (
+  process.env.NODE_ENV === 'production' &&
+  process.env.JWT_SECRET?.includes('change-in-production')
+) {
   console.error('[FATAL] Insecure default JWT_SECRET detected in production');
   process.exit(1);
 }

@@ -15,12 +15,16 @@ const createSessionSchema = Joi.object({
   endTime: Joi.date().optional(),
   focusScore: Joi.number().min(0).max(100).optional(),
   notes: Joi.string().max(1000).allow('', null).optional(),
-  signalHistory: Joi.array().items(Joi.object({
-    timestamp: Joi.date().optional(),
-    focusLevel: Joi.number().optional(),
-    fatigueLevel: Joi.number().optional(),
-    isDistracted: Joi.boolean().optional()
-  })).optional(),
+  signalHistory: Joi.array()
+    .items(
+      Joi.object({
+        timestamp: Joi.date().optional(),
+        focusLevel: Joi.number().optional(),
+        fatigueLevel: Joi.number().optional(),
+        isDistracted: Joi.boolean().optional()
+      })
+    )
+    .optional(),
   breakStats: Joi.object({
     totalBreaks: Joi.number().optional(),
     totalBreakDuration: Joi.number().optional(),
@@ -35,12 +39,16 @@ const updateSessionSchema = Joi.object({
   endTime: Joi.date().optional(),
   notes: Joi.string().optional(),
   focusScore: Joi.number().min(0).max(100).optional(),
-  signalHistory: Joi.array().items(Joi.object({
-    timestamp: Joi.date().optional(),
-    focusLevel: Joi.number().optional(),
-    fatigueLevel: Joi.number().optional(),
-    isDistracted: Joi.boolean().optional()
-  })).optional(),
+  signalHistory: Joi.array()
+    .items(
+      Joi.object({
+        timestamp: Joi.date().optional(),
+        focusLevel: Joi.number().optional(),
+        fatigueLevel: Joi.number().optional(),
+        isDistracted: Joi.boolean().optional()
+      })
+    )
+    .optional(),
   breakStats: Joi.object({
     totalBreaks: Joi.number().optional(),
     totalBreakDuration: Joi.number().optional(),
@@ -147,30 +155,44 @@ router.put('/:sessionId', async (req, res) => {
       });
 
       if (yesterdaySession) {
-        const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-        await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-          action: 'daily_streak',
-          metadata: { sessionId: session._id.toString() }
-        }, {
-          headers: { 'Authorization': req.headers.authorization }
-        });
+        const USER_PROFILE_URL =
+          process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+        await axios.post(
+          `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+          {
+            action: 'daily_streak',
+            metadata: { sessionId: session._id.toString() }
+          },
+          {
+            headers: { Authorization: req.headers.authorization }
+          }
+        );
       }
 
       // Also award session_complete XP
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-      await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-        action: 'session_complete',
-        metadata: { sessionId: session._id.toString(), duration: session.duration }
-      }, {
-        headers: { 'Authorization': req.headers.authorization }
-      });
+      const USER_PROFILE_URL =
+        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+        {
+          action: 'session_complete',
+          metadata: { sessionId: session._id.toString(), duration: session.duration }
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
 
       // Progress quests
-      await axios.post(`${USER_PROFILE_URL}/api/v1/users/quests/progress`, {
-        action: 'study_session'
-      }, {
-        headers: { 'Authorization': req.headers.authorization }
-      });
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
+        {
+          action: 'study_session'
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
     } catch (xpErr) {
       console.warn('XP/streak award failed:', xpErr.message);
     }
@@ -217,6 +239,33 @@ const { Course, StudyPlan, Task } = require('../models');
 // Utility: check if a string looks like a MongoDB ObjectId
 const isObjectId = (str) => /^[a-f\d]{24}$/i.test(str);
 
+const DEFAULT_TASK_ESTIMATED_MINUTES = 30;
+const MIN_TASK_COMPLETION_RATIO = 0.8;
+
+const getCurrentTaskTimingGate = (session, currentTask) => {
+  const estimatedMinutesRaw = Number(currentTask?.estimatedMinutes);
+  const estimatedMinutes =
+    Number.isFinite(estimatedMinutesRaw) && estimatedMinutesRaw > 0
+      ? estimatedMinutesRaw
+      : DEFAULT_TASK_ESTIMATED_MINUTES;
+
+  const startedAt = currentTask?.startedAt || session?.startTime || session?.createdAt;
+  const startedAtMs = startedAt ? new Date(startedAt).getTime() : Date.now();
+  const nowMs = Date.now();
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+
+  const minRequiredMs = Math.floor(estimatedMinutes * 60 * 1000 * MIN_TASK_COMPLETION_RATIO);
+  const canAdvance = elapsedMs >= minRequiredMs;
+
+  return {
+    canAdvance,
+    estimatedMinutes,
+    elapsedMs,
+    minRequiredMs,
+    remainingMs: Math.max(0, minRequiredMs - elapsedMs)
+  };
+};
+
 // POST /setup — Initialize a course-based study session
 router.post('/setup', async (req, res) => {
   try {
@@ -236,15 +285,24 @@ router.post('/setup', async (req, res) => {
       const plan = await StudyPlan.findOne({ _id: studyPlanId, userId });
       if (plan && plan.taskGraph && plan.taskGraph.tasks) {
         // Fetch Task documents linked to this plan so we can sync completion later
-        const planTaskDocs = await Task.find({ studyPlanId: studyPlanId.toString(), userId }).lean();
+        const planTaskDocs = await Task.find({
+          studyPlanId: studyPlanId.toString(),
+          userId
+        }).lean();
 
         tasks = plan.taskGraph.tasks.map((t, index) => {
           // Try to match by title (tasks are created in the same order as taskGraph.tasks)
-          const matchedDoc = planTaskDocs[index] || planTaskDocs.find(d => d.title === t.title);
+          const matchedDoc = planTaskDocs[index] || planTaskDocs.find((d) => d.title === t.title);
           return {
-            taskId: matchedDoc ? matchedDoc._id.toString() : (t.id || `task-${index}`),
+            taskId: matchedDoc ? matchedDoc._id.toString() : t.id || `task-${index}`,
             title: t.title,
             description: t.description || '',
+            estimatedMinutes: Number(
+              t.estimated_minutes ||
+                t.estimatedTime ||
+                matchedDoc?.estimatedTime ||
+                DEFAULT_TASK_ESTIMATED_MINUTES
+            ),
             status: 'pending',
             xpEarned: 0
           };
@@ -261,6 +319,7 @@ router.post('/setup', async (req, res) => {
               taskId: sub.id || `t${tIdx}-s${sIdx}`,
               title: sub.title || `${topic.title} - Part ${sIdx + 1}`,
               description: sub.summary || '',
+              estimatedMinutes: DEFAULT_TASK_ESTIMATED_MINUTES,
               status: 'pending',
               xpEarned: 0
             });
@@ -270,11 +329,17 @@ router.post('/setup', async (req, res) => {
             taskId: `topic-${tIdx}`,
             title: topic.title,
             description: '',
+            estimatedMinutes: DEFAULT_TASK_ESTIMATED_MINUTES,
             status: 'pending',
             xpEarned: 0
           });
         }
       });
+    }
+
+    if (tasks.length > 0) {
+      tasks[0].status = 'in-progress';
+      tasks[0].startedAt = new Date();
     }
 
     const session = await StudySession.create({
@@ -322,8 +387,9 @@ router.post('/:sessionId/task/complete', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Active session not found' });
 
     // Allow host or the session owner
-    const isParticipant = session.userId === userId ||
-      session.participants?.some(p => p.userId === userId && !p.leftAt);
+    const isParticipant =
+      session.userId === userId ||
+      session.participants?.some((p) => p.userId === userId && !p.leftAt);
     if (!isParticipant && session.userId !== userId) {
       return res.status(403).json({ error: 'Not a participant in this session' });
     }
@@ -336,6 +402,18 @@ router.post('/:sessionId/task/complete', async (req, res) => {
     const currentIndex = taskProgress.currentTaskIndex;
     if (currentIndex >= taskProgress.tasks.length) {
       return res.status(400).json({ error: 'All tasks already completed' });
+    }
+
+    const currentTask = taskProgress.tasks[currentIndex];
+    const timingGate = getCurrentTaskTimingGate(session, currentTask);
+    if (!timingGate.canAdvance) {
+      return res.status(409).json({
+        error: 'Task cannot be completed yet. Complete at least 80% of task time first.',
+        code: 'TASK_MIN_TIME_NOT_REACHED',
+        minCompletionRatio: MIN_TASK_COMPLETION_RATIO,
+        estimatedMinutes: timingGate.estimatedMinutes,
+        remainingSeconds: Math.ceil(timingGate.remainingMs / 1000)
+      });
     }
 
     // Mark current task as completed
@@ -363,7 +441,7 @@ router.post('/:sessionId/task/complete', async (req, res) => {
       Task.findOneAndUpdate(
         { _id: completedTaskId, userId: session.userId },
         { status: 'completed', completedAt: new Date() }
-      ).catch(err => console.warn('Task sync failed:', err.message));
+      ).catch((err) => console.warn('Task sync failed:', err.message));
     }
 
     const allDone = taskProgress.completedTasks >= taskProgress.totalTasks;
@@ -397,6 +475,18 @@ router.post('/:sessionId/task/skip', async (req, res) => {
 
     if (currentIndex >= taskProgress.tasks.length) {
       return res.status(400).json({ error: 'No more tasks to skip' });
+    }
+
+    const currentTask = taskProgress.tasks[currentIndex];
+    const timingGate = getCurrentTaskTimingGate(session, currentTask);
+    if (!timingGate.canAdvance) {
+      return res.status(409).json({
+        error: 'Task cannot be skipped yet. Complete at least 80% of task time first.',
+        code: 'TASK_MIN_TIME_NOT_REACHED',
+        minCompletionRatio: MIN_TASK_COMPLETION_RATIO,
+        estimatedMinutes: timingGate.estimatedMinutes,
+        remainingSeconds: Math.ceil(timingGate.remainingMs / 1000)
+      });
     }
 
     taskProgress.tasks[currentIndex].status = 'skipped';
@@ -450,6 +540,7 @@ router.post('/team', async (req, res) => {
                 taskId: sub.id || `t${tIdx}-s${sIdx}`,
                 title: sub.title || `${topic.title} - Part ${sIdx + 1}`,
                 description: sub.summary || '',
+                estimatedMinutes: DEFAULT_TASK_ESTIMATED_MINUTES,
                 status: 'pending',
                 xpEarned: 0
               });
@@ -459,12 +550,18 @@ router.post('/team', async (req, res) => {
               taskId: `topic-${tIdx}`,
               title: topic.title,
               description: '',
+              estimatedMinutes: DEFAULT_TASK_ESTIMATED_MINUTES,
               status: 'pending',
               xpEarned: 0
             });
           }
         });
       }
+    }
+
+    if (tasks.length > 0) {
+      tasks[0].status = 'in-progress';
+      tasks[0].startedAt = new Date();
     }
 
     const session = await StudySession.create({
@@ -478,19 +575,24 @@ router.post('/team', async (req, res) => {
       status: 'active',
       inviteCode,
       maxParticipants: Math.min(maxParticipants || 4, 4),
-      participants: [{
-        userId,
-        name: req.user.name || 'Host',
-        role: 'host',
-        joinedAt: new Date()
-      }],
+      participants: [
+        {
+          userId,
+          name: req.user.name || 'Host',
+          role: 'host',
+          joinedAt: new Date()
+        }
+      ],
       startTime: new Date(),
-      taskProgress: tasks.length > 0 ? {
-        currentTaskIndex: 0,
-        tasks,
-        totalTasks: tasks.length,
-        completedTasks: 0
-      } : undefined,
+      taskProgress:
+        tasks.length > 0
+          ? {
+              currentTaskIndex: 0,
+              tasks,
+              totalTasks: tasks.length,
+              completedTasks: 0
+            }
+          : undefined,
       xpMultiplier: 1.0 // Will be updated when session starts based on team size
     });
 
@@ -519,11 +621,12 @@ router.post('/team/:sessionId/join', async (req, res) => {
     });
 
     if (!session) return res.status(404).json({ error: 'Team session not found' });
-    if (session.inviteCode !== inviteCode) return res.status(403).json({ error: 'Invalid invite code' });
-    if (session.participants.some(p => p.userId === userId && !p.leftAt)) {
+    if (session.inviteCode !== inviteCode)
+      return res.status(403).json({ error: 'Invalid invite code' });
+    if (session.participants.some((p) => p.userId === userId && !p.leftAt)) {
       return res.status(409).json({ error: 'Already in this session' });
     }
-    if (session.participants.filter(p => !p.leftAt).length >= session.maxParticipants) {
+    if (session.participants.filter((p) => !p.leftAt).length >= session.maxParticipants) {
       return res.status(400).json({ error: 'Session is full' });
     }
 
@@ -535,7 +638,7 @@ router.post('/team/:sessionId/join', async (req, res) => {
     });
 
     // Update XP multiplier based on team size
-    const activeCount = session.participants.filter(p => !p.leftAt).length;
+    const activeCount = session.participants.filter((p) => !p.leftAt).length;
     const multipliers = { 1: 1.0, 2: 1.15, 3: 1.2, 4: 1.25 };
     session.xpMultiplier = multipliers[Math.min(activeCount, 4)] || 1.25;
 
@@ -543,14 +646,20 @@ router.post('/team/:sessionId/join', async (req, res) => {
 
     // Notify host
     try {
-      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, {
-        userId: session.userId,
-        type: 'team_join',
-        title: 'Someone joined your session',
-        message: `A study partner joined your team session!`,
-        metadata: { sessionId: session._id.toString() }
-      }, { headers: { Authorization: req.headers.authorization } });
-    } catch (err) { console.warn('Team join notification failed:', err.message); }
+      await axios.post(
+        `${NOTIFICATION_URL}/api/v1/notifications`,
+        {
+          userId: session.userId,
+          type: 'team_join',
+          title: 'Someone joined your session',
+          message: `A study partner joined your team session!`,
+          metadata: { sessionId: session._id.toString() }
+        },
+        { headers: { Authorization: req.headers.authorization } }
+      );
+    } catch (err) {
+      console.warn('Team join notification failed:', err.message);
+    }
 
     res.json({ message: 'Joined team session', session });
   } catch (error) {
@@ -572,11 +681,12 @@ router.post('/team/join-by-code', async (req, res) => {
       status: 'active'
     });
 
-    if (!session) return res.status(404).json({ error: 'No active session found with that invite code' });
-    if (session.participants.some(p => p.userId === userId && !p.leftAt)) {
+    if (!session)
+      return res.status(404).json({ error: 'No active session found with that invite code' });
+    if (session.participants.some((p) => p.userId === userId && !p.leftAt)) {
       return res.status(409).json({ error: 'Already in this session' });
     }
-    if (session.participants.filter(p => !p.leftAt).length >= session.maxParticipants) {
+    if (session.participants.filter((p) => !p.leftAt).length >= session.maxParticipants) {
       return res.status(400).json({ error: 'Session is full' });
     }
 
@@ -587,7 +697,7 @@ router.post('/team/join-by-code', async (req, res) => {
       joinedAt: new Date()
     });
 
-    const activeCount = session.participants.filter(p => !p.leftAt).length;
+    const activeCount = session.participants.filter((p) => !p.leftAt).length;
     const multipliers = { 1: 1.0, 2: 1.15, 3: 1.2, 4: 1.25 };
     session.xpMultiplier = multipliers[Math.min(activeCount, 4)] || 1.25;
 
@@ -595,16 +705,27 @@ router.post('/team/join-by-code', async (req, res) => {
 
     // Notify host
     try {
-      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, {
-        userId: session.userId,
-        type: 'team_join',
-        title: 'Someone joined your session',
-        message: `A study partner joined your team session!`,
-        metadata: { sessionId: session._id.toString() }
-      }, { headers: { Authorization: req.headers.authorization } });
-    } catch (err) { console.warn('Team join notification failed:', err.message); }
+      await axios.post(
+        `${NOTIFICATION_URL}/api/v1/notifications`,
+        {
+          userId: session.userId,
+          type: 'team_join',
+          title: 'Someone joined your session',
+          message: `A study partner joined your team session!`,
+          metadata: { sessionId: session._id.toString() }
+        },
+        { headers: { Authorization: req.headers.authorization } }
+      );
+    } catch (err) {
+      console.warn('Team join notification failed:', err.message);
+    }
 
-    res.json({ message: 'Joined team session', session, sessionId: session._id.toString(), inviteCode: session.inviteCode });
+    res.json({
+      message: 'Joined team session',
+      session,
+      sessionId: session._id.toString(),
+      inviteCode: session.inviteCode
+    });
   } catch (error) {
     console.error('Error joining by code:', error);
     res.status(500).json({ error: 'Failed to join session' });
@@ -615,10 +736,14 @@ router.post('/team/join-by-code', async (req, res) => {
 router.post('/team/:sessionId/leave', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      type: 'team',
+      status: 'active'
+    });
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const participant = session.participants.find(p => p.userId === userId && !p.leftAt);
+    const participant = session.participants.find((p) => p.userId === userId && !p.leftAt);
     if (!participant) return res.status(404).json({ error: 'Not in this session' });
 
     participant.leftAt = new Date();
@@ -633,7 +758,11 @@ router.post('/team/:sessionId/leave', async (req, res) => {
 // POST /team/:sessionId/invite — Invite friend
 router.post('/team/:sessionId/invite', async (req, res) => {
   try {
-    const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      type: 'team',
+      status: 'active'
+    });
     if (!session) {
       console.warn(`[Team Invite] Session not found: ${req.params.sessionId}`);
       return res.status(404).json({ error: 'Session not found' });
@@ -651,18 +780,23 @@ router.post('/team/:sessionId/invite', async (req, res) => {
     let inviterName = 'A friend';
     let courseName = null;
     try {
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+      const USER_PROFILE_URL =
+        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
       const profileRes = await axios.get(`${USER_PROFILE_URL}/api/v1/users/profile`, {
         headers: { Authorization: req.headers.authorization }
       });
       inviterName = profileRes.data?.nickname || profileRes.data?.profile?.nickname || inviterName;
-    } catch (_e) { /* best-effort */ }
+    } catch (_e) {
+      /* best-effort */
+    }
     if (session.courseId) {
       try {
         const { Course } = require('../models');
         const course = await Course.findById(session.courseId).select('title').lean();
         if (course) courseName = course.title;
-      } catch (_e) { /* best-effort */ }
+      } catch (_e) {
+        /* best-effort */
+      }
     }
 
     // Send team invite notification
@@ -676,18 +810,18 @@ router.post('/team/:sessionId/invite', async (req, res) => {
           sessionId: session._id.toString(),
           inviteCode: session.inviteCode,
           inviterName,
-          ...(courseName && { courseName }),
+          ...(courseName && { courseName })
         }
       };
-      
+
       console.log('[Team Invite] Sending notification:', notificationPayload);
-      
-      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, notificationPayload, { 
-        headers: { Authorization: req.headers.authorization } 
+
+      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, notificationPayload, {
+        headers: { Authorization: req.headers.authorization }
       });
-      
+
       console.log(`[Team Invite] Notification sent successfully to ${friendId}`);
-    } catch (err) { 
+    } catch (err) {
       console.warn('Team invite notification failed:', err.message, err.response?.data);
     }
 
@@ -702,27 +836,34 @@ router.post('/team/:sessionId/invite', async (req, res) => {
 router.put('/team/:sessionId/start', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      type: 'team',
+      status: 'active'
+    });
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (session.userId !== userId) return res.status(403).json({ error: 'Only the session leader can start' });
+    if (session.userId !== userId)
+      return res.status(403).json({ error: 'Only the session leader can start' });
 
     // Broadcast session_start to all active participants (including leader)
-    const activeUserIds = session.participants
-      .filter(p => !p.leftAt)
-      .map(p => p.userId);
+    const activeUserIds = session.participants.filter((p) => !p.leftAt).map((p) => p.userId);
 
     // Also include the host if not already in participants list
     if (!activeUserIds.includes(userId)) activeUserIds.push(userId);
 
     try {
-      await axios.post(`${NOTIFICATION_URL}/api/v1/notifications/broadcast`, {
-        userIds: activeUserIds,
-        payload: {
-          type: 'session_start',
-          sessionId: session._id.toString(),
-          inviteCode: session.inviteCode,
-        }
-      }, { headers: { Authorization: req.headers.authorization } });
+      await axios.post(
+        `${NOTIFICATION_URL}/api/v1/notifications/broadcast`,
+        {
+          userIds: activeUserIds,
+          payload: {
+            type: 'session_start',
+            sessionId: session._id.toString(),
+            inviteCode: session.inviteCode
+          }
+        },
+        { headers: { Authorization: req.headers.authorization } }
+      );
     } catch (err) {
       console.warn('[Team Start] Broadcast failed:', err.message);
     }
@@ -740,7 +881,7 @@ router.get('/team/:sessionId/participants', async (req, res) => {
     const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team' });
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const participants = session.participants.map(p => ({
+    const participants = session.participants.map((p) => ({
       userId: p.userId,
       name: p.name,
       avatar: p.avatar,
@@ -762,11 +903,16 @@ router.get('/team/:sessionId/participants', async (req, res) => {
 router.put('/team/:sessionId/end', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team', status: 'active' });
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      type: 'team',
+      status: 'active'
+    });
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
     // Only host can end
-    if (session.userId !== userId) return res.status(403).json({ error: 'Only the host can end the session' });
+    if (session.userId !== userId)
+      return res.status(403).json({ error: 'Only the host can end the session' });
 
     const now = new Date();
     session.status = 'completed';
@@ -774,7 +920,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
     session.duration = Math.round((now - session.startTime) / 60000);
 
     // Set leftAt for all active participants
-    session.participants.forEach(p => {
+    session.participants.forEach((p) => {
       if (!p.leftAt) p.leftAt = now;
     });
 
@@ -785,11 +931,17 @@ router.put('/team/:sessionId/end', async (req, res) => {
     for (const p of session.participants) {
       try {
         const action = p.role === 'host' ? 'team_session_host' : 'team_session';
-        await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, {
-          action,
-          metadata: { sessionId: session._id.toString(), participantUserId: p.userId }
-        }, { headers: { Authorization: req.headers.authorization } });
-      } catch (err) { console.warn('Team XP award failed for', p.userId, err.message); }
+        await axios.post(
+          `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+          {
+            action,
+            metadata: { sessionId: session._id.toString(), participantUserId: p.userId }
+          },
+          { headers: { Authorization: req.headers.authorization } }
+        );
+      } catch (err) {
+        console.warn('Team XP award failed for', p.userId, err.message);
+      }
     }
 
     res.json({ message: 'Team session ended', session });

@@ -7,16 +7,33 @@ const router = express.Router();
 // ── Validation schemas ──────────────────────────────
 const createSchema = Joi.object({
   userId: Joi.string().required(),
-  type: Joi.string().valid(
-    'study_reminder', 'break_suggestion', 'plan_generated',
-    'task_due', 'session_suspended', 'fatigue_alert',
-    'focus_drop', 'achievement', 'level_up', 'quest_complete',
-    'schedule_change', 'system', 'team_invite'
-  ).required(),
+  type: Joi.string()
+    .valid(
+      'study_reminder',
+      'break_suggestion',
+      'plan_generated',
+      'task_due',
+      'session_suspended',
+      'fatigue_alert',
+      'focus_drop',
+      'achievement',
+      'level_up',
+      'quest_complete',
+      'schedule_change',
+      'system',
+      'team_invite',
+      'team_join',
+      'session_start',
+      'friend_request',
+      'friend_accepted',
+      'friend_studying'
+    )
+    .required(),
   title: Joi.string().max(200).required(),
   message: Joi.string().max(2000).required(),
   priority: Joi.string().valid('low', 'normal', 'high', 'urgent').default('normal'),
-  metadata: Joi.object().default({})
+  metadata: Joi.object().default({}),
+  data: Joi.object().optional()
 });
 
 // ── GET /api/v1/notifications?userId=...&status=...&limit=... ──
@@ -57,7 +74,7 @@ router.post('/broadcast', async (req, res, next) => {
     }
     const broadcastToUser = req.app.locals.broadcastToUser;
     if (broadcastToUser) {
-      userIds.forEach(uid => broadcastToUser(uid, payload));
+      userIds.forEach((uid) => broadcastToUser(uid, payload));
     }
     res.json({ delivered: userIds.length });
   } catch (err) {
@@ -73,12 +90,19 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const notification = await Notification.create(value);
+    const normalizedValue = {
+      ...value,
+      metadata:
+        value.metadata && Object.keys(value.metadata).length > 0 ? value.metadata : value.data || {}
+    };
+    delete normalizedValue.data;
+
+    const notification = await Notification.create(normalizedValue);
 
     // Push via WebSocket if available
     const broadcastToUser = req.app.locals.broadcastToUser;
     if (broadcastToUser) {
-      broadcastToUser(value.userId, {
+      broadcastToUser(normalizedValue.userId, {
         type: 'new_notification',
         notification: notification.toObject()
       });

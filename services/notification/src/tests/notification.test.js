@@ -65,9 +65,7 @@ describe('Notification Service', () => {
         .mockResolvedValueOnce(1) // total
         .mockResolvedValueOnce(1); // unread
 
-      const res = await request(app)
-        .get('/api/v1/notifications')
-        .query({ userId: 'user-123' });
+      const res = await request(app).get('/api/v1/notifications').query({ userId: 'user-123' });
 
       expect(res.status).toBe(200);
       expect(res.body.notifications).toHaveLength(1);
@@ -84,27 +82,23 @@ describe('Notification Service', () => {
     it('should create a notification', async () => {
       Notification.create.mockResolvedValue(mockNotification);
 
-      const res = await request(app)
-        .post('/api/v1/notifications')
-        .send({
-          userId: 'user-123',
-          type: 'study_reminder',
-          title: 'Time to study!',
-          message: 'Your next study session starts in 10 minutes.'
-        });
+      const res = await request(app).post('/api/v1/notifications').send({
+        userId: 'user-123',
+        type: 'study_reminder',
+        title: 'Time to study!',
+        message: 'Your next study session starts in 10 minutes.'
+      });
 
       expect(res.status).toBe(201);
     });
 
     it('should reject invalid notification type', async () => {
-      const res = await request(app)
-        .post('/api/v1/notifications')
-        .send({
-          userId: 'user-123',
-          type: 'invalid_type',
-          title: 'Test',
-          message: 'Test'
-        });
+      const res = await request(app).post('/api/v1/notifications').send({
+        userId: 'user-123',
+        type: 'invalid_type',
+        title: 'Test',
+        message: 'Test'
+      });
 
       expect(res.status).toBe(400);
     });

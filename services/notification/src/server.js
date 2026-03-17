@@ -24,7 +24,8 @@ function broadcastToUser(userId, payload) {
   if (!userClients) return;
   const msg = JSON.stringify(payload);
   for (const ws of userClients) {
-    if (ws.readyState === 1) { // OPEN
+    if (ws.readyState === 1) {
+      // OPEN
       ws.send(msg);
     }
   }
@@ -70,7 +71,9 @@ async function startServer() {
         clients.set(userId, new Set());
       }
       clients.get(userId).add(ws);
-      logger.info(`WS client connected for user ${userId} (${clients.get(userId).size} connections)`);
+      logger.info(
+        `WS client connected for user ${userId} (${clients.get(userId).size} connections)`
+      );
 
       // Set user online when first connection opens
       if (clients.get(userId).size === 1) {
@@ -79,13 +82,18 @@ async function startServer() {
 
       // Heartbeat
       ws.isAlive = true;
-      ws.on('pong', () => { ws.isAlive = true; });
+      ws.on('pong', () => {
+        ws.isAlive = true;
+      });
 
       // Handle messages (e.g., status updates)
       ws.on('message', (data) => {
         try {
           const msg = JSON.parse(data);
-          if (msg.type === 'status_update' && ['online', 'studying', 'offline'].includes(msg.status)) {
+          if (
+            msg.type === 'status_update' &&
+            ['online', 'studying', 'offline'].includes(msg.status)
+          ) {
             updateOnlineStatus(userId, msg.status);
           }
         } catch {

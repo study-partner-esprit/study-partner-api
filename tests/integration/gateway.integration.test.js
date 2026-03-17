@@ -26,7 +26,7 @@ const { generateToken } = require('../../shared/auth');
 const testUser = {
   userId: new mongoose.Types.ObjectId().toString(),
   email: 'integration@test.com',
-  role: 'student',
+  role: 'student'
 };
 
 let token;
@@ -71,13 +71,11 @@ describe('Auth Service - Registration & Login flow', () => {
   const uniqueEmail = `test-${Date.now()}@example.com`;
 
   it('POST /api/v1/auth/register – should create user', async () => {
-    const res = await request(authApp)
-      .post('/api/v1/auth/register')
-      .send({
-        email: uniqueEmail,
-        password: 'TestPass123!',
-        name: 'Integration Tester',
-      });
+    const res = await request(authApp).post('/api/v1/auth/register').send({
+      email: uniqueEmail,
+      password: 'TestPass123!',
+      name: 'Integration Tester'
+    });
 
     expect([200, 201]).toContain(res.status);
     expect(res.body.token || res.body.user).toBeDefined();
@@ -124,7 +122,7 @@ describe('Study Service – CRUD with authentication', () => {
       .send({
         title: 'Integration Test Task',
         description: 'Created by integration test',
-        priority: 'medium',
+        priority: 'medium'
       });
 
     expect([200, 201]).toContain(res.status);
@@ -167,7 +165,7 @@ describe('Analytics Service – Event tracking', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         eventType: 'test_event',
-        data: { source: 'integration-test' },
+        data: { source: 'integration-test' }
       });
 
     expect([200, 201]).toContain(res.status);

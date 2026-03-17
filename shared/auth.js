@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 
 const UserRole = {
   STUDENT: 'student',
-  ADMIN: 'admin',
+  ADMIN: 'admin'
 };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
@@ -36,7 +36,7 @@ async function verifyPassword(password, hashedPassword) {
  */
 function generateToken(payload) {
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
+    expiresIn: JWT_EXPIRES_IN
   });
 }
 
@@ -85,8 +85,8 @@ function requireRole(role) {
     }
 
     if (req.user.role !== role) {
-      return res.status(403).json({ 
-        error: `Insufficient permissions. Required role: ${role}` 
+      return res.status(403).json({
+        error: `Insufficient permissions. Required role: ${role}`
       });
     }
 
@@ -101,5 +101,5 @@ module.exports = {
   generateToken,
   verifyToken,
   authenticate,
-  requireRole,
+  requireRole
 };

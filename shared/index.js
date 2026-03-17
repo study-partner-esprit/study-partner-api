@@ -5,5 +5,5 @@ module.exports = {
   ...require('./database'),
   ...require('./middleware'),
   ...require('./tierGate'),
-  logger,
+  logger
 };

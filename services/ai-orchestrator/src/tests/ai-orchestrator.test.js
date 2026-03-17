@@ -22,13 +22,11 @@ describe('AI Orchestrator Service', () => {
 
   describe('POST /api/v1/ai/process', () => {
     it('should accept AI processing request', async () => {
-      const res = await request(app)
-        .post('/api/v1/ai/process')
-        .send({
-          userId: 'user-123',
-          action: 'generate_plan',
-          courseId: 'course-1'
-        });
+      const res = await request(app).post('/api/v1/ai/process').send({
+        userId: 'user-123',
+        action: 'generate_plan',
+        courseId: 'course-1'
+      });
 
       // May proxy to Python service or return error if service down
       expect([200, 201, 502, 404]).toContain(res.status);

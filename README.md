@@ -6,17 +6,17 @@ Express.js microservices architecture for the Study Partner platform.
 
 ### Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| API Gateway | 3000 | Request routing, rate limiting, monitoring |
-| Auth Service | 3001 | JWT authentication & RBAC |
-| User Profile Service | 3002 | Profiles, availability, gamification |
-| Study Service | 3003 | Tasks, topics, sessions, courses, plans |
-| AI Orchestrator | 3004 | Proxies to Python AI (planner, coach, signals) |
-| Signal Processing | 3005 | Focus session tracking |
-| Analytics Service | 3006 | Event tracking & insights |
-| Notification Service | 3007 | In-app notifications |
-| Python AI Service | 8000 | ML models, course ingestion, coaching |
+| Service              | Port | Description                                    |
+| -------------------- | ---- | ---------------------------------------------- |
+| API Gateway          | 3000 | Request routing, rate limiting, monitoring     |
+| Auth Service         | 3001 | JWT authentication & RBAC                      |
+| User Profile Service | 3002 | Profiles, availability, gamification           |
+| Study Service        | 3003 | Tasks, topics, sessions, courses, plans        |
+| AI Orchestrator      | 3004 | Proxies to Python AI (planner, coach, signals) |
+| Signal Processing    | 3005 | Focus session tracking                         |
+| Analytics Service    | 3006 | Event tracking & insights                      |
+| Notification Service | 3007 | In-app notifications                           |
+| Python AI Service    | 8000 | ML models, course ingestion, coaching          |
 
 ### Tech Stack
 
@@ -39,6 +39,7 @@ Express.js microservices architecture for the Study Partner platform.
 ### Installation
 
 1. Install shared dependencies:
+
 ```bash
 cd shared
 npm install
@@ -46,6 +47,7 @@ cd ..
 ```
 
 2. Install service dependencies:
+
 ```bash
 # Install for each service
 cd services/api-gateway && npm install && cd ../..
@@ -60,12 +62,14 @@ cd services/analytics && npm install && cd ../..
 ### Running with Docker Compose
 
 Start all services:
+
 ```bash
 cd /home/vanitas/Desktop/study-partner
 docker-compose up
 ```
 
 Start specific services:
+
 ```bash
 docker-compose up mongo api-gateway auth-service
 ```
@@ -73,11 +77,13 @@ docker-compose up mongo api-gateway auth-service
 ### Running Locally (Development)
 
 1. Start MongoDB:
+
 ```bash
 docker-compose up mongo
 ```
 
 2. Run individual services:
+
 ```bash
 # API Gateway
 cd services/api-gateway
@@ -108,14 +114,17 @@ AI_SERVICE_URL=http://localhost:5000
 ## API Endpoints
 
 ### API Gateway
+
 All requests go through the gateway at `http://localhost:8000`
 
 ### Auth Service
+
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login user
 - `GET /api/v1/auth/me` - Get current user (protected)
 
 ### User Profile Service
+
 - `GET /api/v1/users/profile` - Get user profile
 - `PUT /api/v1/users/profile` - Update profile
 - `GET /api/v1/users/profile/stats` - Get user stats
@@ -123,6 +132,7 @@ All requests go through the gateway at `http://localhost:8000`
 - `POST /api/v1/users/profile/goals` - Add new goal
 
 ### Study Management Service
+
 - `GET /api/v1/study/tasks` - Get all tasks
 - `POST /api/v1/study/tasks` - Create task
 - `PUT /api/v1/study/tasks/:id` - Update task
@@ -133,6 +143,7 @@ All requests go through the gateway at `http://localhost:8000`
 - `POST /api/v1/study/sessions` - Log study session
 
 ### AI Orchestrator Service
+
 - `POST /api/v1/ai/ingest` - Ingest course content
 - `POST /api/v1/ai/plan/create` - Create study plan (fetches user availability, calls Python AI)
 - `GET /api/v1/ai/plan/list` - Get user's study plans
@@ -147,6 +158,7 @@ All requests go through the gateway at `http://localhost:8000`
 - `GET /api/v1/ai/status` - Check AI agents status
 
 ### Signal Processing Service
+
 - `POST /api/v1/signals/focus/start` - Start focus tracking
 - `POST /api/v1/signals/focus/:id/data` - Add focus data point
 - `POST /api/v1/signals/focus/:id/end` - End focus session
@@ -154,12 +166,14 @@ All requests go through the gateway at `http://localhost:8000`
 - `GET /api/v1/signals/focus/stats/summary` - Get focus statistics
 
 ### Analytics Service
+
 - `POST /api/v1/analytics/track` - Track event
 - `GET /api/v1/analytics/timeline` - Get activity timeline
 - `GET /api/v1/analytics/summary` - Get activity summary
 - `GET /api/v1/analytics/insights` - Get insights
 
 ### Notification Service
+
 - `GET /api/v1/notifications` - Get user notifications
 - `POST /api/v1/notifications` - Create notification
 - `PATCH /api/v1/notifications/:id/read` - Mark as read
@@ -180,13 +194,16 @@ Get a token by registering or logging in via the Auth Service.
 ## Health Checks
 
 Each service exposes a health check endpoint:
+
 - `/api/v1/health` — individual service
 
 Aggregate monitoring (via API Gateway):
+
 - `GET /api/v1/monitoring/health` — pings all services, returns combined status
 - `GET /api/v1/monitoring/metrics` — request count, error rate, uptime
 
 Run the health check script from the project root:
+
 ```bash
 ./health-check.sh
 ```
@@ -195,12 +212,12 @@ Run the health check script from the project root:
 
 All services import from the shared package (`file:../../shared`):
 
-| Module | Exports |
-|--------|---------|
-| `auth.js` | `hashPassword`, `verifyPassword`, `generateToken`, `verifyToken`, `authenticate` (JWT middleware), `requireRole` |
+| Module          | Exports                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `auth.js`       | `hashPassword`, `verifyPassword`, `generateToken`, `verifyToken`, `authenticate` (JWT middleware), `requireRole`  |
 | `middleware.js` | `corsMiddleware()`, `loggingMiddleware`, `errorHandler`, `rateLimiter(max, windowMs)`, `healthCheck(serviceName)` |
-| `database.js` | `connectDatabase`, `disconnectDatabase` |
-| `logger.js` | Winston logger instance (structured JSON, console + file transports) |
+| `database.js`   | `connectDatabase`, `disconnectDatabase`                                                                           |
+| `logger.js`     | Winston logger instance (structured JSON, console + file transports)                                              |
 
 ## Integration with AI Service
 
@@ -211,11 +228,13 @@ The AI Orchestrator communicates with the Python AI service at `AI_SERVICE_URL` 
 ## Development
 
 ### Testing
+
 ```bash
 npm test
 ```
 
 ### Linting
+
 ```bash
 npm run lint
 ```

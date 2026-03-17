@@ -221,6 +221,15 @@ services:
     environment:
       - PYTHONPATH=/app
       - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - APIFY_API_KEY=${APIFY_API_KEY:-}
+      - HF_API_KEY=${HF_API_KEY:-}
+      - LM_STUDIO_URL=${LM_STUDIO_URL:-http://host.docker.internal:1234/v1/chat/completions}
+      - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-lm-studio}
+      - LM_STUDIO_TIMEOUT_SECONDS=${LM_STUDIO_TIMEOUT_SECONDS:-8}
+      - SEARCH_RETRIEVAL_TIMEOUT_SECONDS=${SEARCH_RETRIEVAL_TIMEOUT_SECONDS:-12}
+      - SEARCH_PIPELINE_TIMEOUT_SECONDS=${SEARCH_PIPELINE_TIMEOUT_SECONDS:-70}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../study-partner-ai:/app
     working_dir: /app
