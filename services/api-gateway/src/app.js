@@ -112,7 +112,9 @@ app.use(
     ...proxyOptions,
     target: NOTIFICATION_SERVICE_URL,
     pathRewrite: { '^/api/v1/notifications': '/api/v1/notifications' },
-    ws: true
+    ws: true,
+    proxyTimeout: 15000,
+    timeout: 15000
   })
 );
 

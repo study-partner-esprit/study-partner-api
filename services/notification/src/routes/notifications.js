@@ -40,6 +40,7 @@ const createSchema = Joi.object({
 router.get('/', async (req, res, next) => {
   try {
     const { userId, status, limit = 50, offset = 0 } = req.query;
+    const dbTimeoutMs = Number(process.env.NOTIFICATION_DB_TIMEOUT_MS || 8000);
 
     if (!userId) {
       return res.status(400).json({ error: 'userId query parameter is required' });
@@ -53,11 +54,12 @@ router.get('/', async (req, res, next) => {
         .sort({ createdAt: -1 })
         .skip(Number(offset))
         .limit(Number(limit))
+        .maxTimeMS(dbTimeoutMs)
         .lean(),
-      Notification.countDocuments(filter)
+      Notification.countDocuments(filter).maxTimeMS(dbTimeoutMs)
     ]);
 
-    const unreadCount = await Notification.countDocuments({ userId, status: 'unread' });
+    const unreadCount = await Notification.countDocuments({ userId, status: 'unread' }).maxTimeMS(dbTimeoutMs);
 
     res.json({ notifications, total, unreadCount });
   } catch (err) {
