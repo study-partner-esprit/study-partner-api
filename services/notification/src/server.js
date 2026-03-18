@@ -51,7 +51,7 @@ async function startServer() {
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000),
       connectTimeoutMS: Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 5000),
-      socketTimeoutMS: Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 10000),
+      socketTimeoutMS: Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 10000)
     });
     logger.info('Connected to MongoDB');
 

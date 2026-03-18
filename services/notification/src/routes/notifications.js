@@ -59,7 +59,9 @@ router.get('/', async (req, res, next) => {
       Notification.countDocuments(filter).maxTimeMS(dbTimeoutMs)
     ]);
 
-    const unreadCount = await Notification.countDocuments({ userId, status: 'unread' }).maxTimeMS(dbTimeoutMs);
+    const unreadCount = await Notification.countDocuments({ userId, status: 'unread' }).maxTimeMS(
+      dbTimeoutMs
+    );
 
     res.json({ notifications, total, unreadCount });
   } catch (err) {
