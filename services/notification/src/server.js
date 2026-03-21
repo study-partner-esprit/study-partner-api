@@ -4,6 +4,14 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 const { WebSocketServer } = require('ws');
 const app = require('./app');
+const { handleChatQuery } = require('./websocket-handlers/chat-handler');
+const {
+  handleVoiceSignal,
+  handleMuteState,
+  handleSpeakingState
+} = require('./websocket-handlers/voice-handler');
+const { joinParticipant, leaveParticipant } = require('./services/voiceService');
+const { normalizeSignalPayload } = require('./utils/rtc-signaling');
 
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
@@ -18,6 +26,8 @@ const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localho
 // ── WebSocket client registry ───────────────────────
 // Map<userId, Set<WebSocket>>
 const clients = new Map();
+// Map<sessionId, Map<userId, Set<WebSocket>>>
+const sessionClients = new Map();
 
 function broadcastToUser(userId, payload) {
   const userClients = clients.get(userId);
@@ -27,6 +37,47 @@ function broadcastToUser(userId, payload) {
     if (ws.readyState === 1) {
       // OPEN
       ws.send(msg);
+    }
+  }
+}
+
+function addRealtimeClient(sessionId, userId, ws) {
+  if (!sessionClients.has(sessionId)) {
+    sessionClients.set(sessionId, new Map());
+  }
+  const sessionMap = sessionClients.get(sessionId);
+  if (!sessionMap.has(userId)) {
+    sessionMap.set(userId, new Set());
+  }
+  sessionMap.get(userId).add(ws);
+}
+
+function removeRealtimeClient(sessionId, userId, ws) {
+  const sessionMap = sessionClients.get(sessionId);
+  if (!sessionMap) return;
+
+  const userSockets = sessionMap.get(userId);
+  if (!userSockets) return;
+
+  userSockets.delete(ws);
+  if (userSockets.size === 0) {
+    sessionMap.delete(userId);
+  }
+  if (sessionMap.size === 0) {
+    sessionClients.delete(sessionId);
+  }
+}
+
+function broadcastToSession(sessionId, payload) {
+  const sessionMap = sessionClients.get(sessionId);
+  if (!sessionMap) return;
+  const raw = JSON.stringify(payload);
+
+  for (const sockets of sessionMap.values()) {
+    for (const socket of sockets) {
+      if (socket.readyState === 1) {
+        socket.send(raw);
+      }
     }
   }
 }
@@ -57,10 +108,31 @@ async function startServer() {
 
     const server = http.createServer(app);
 
-    // ── WebSocket Server on same HTTP server ────────
-    const wss = new WebSocketServer({ server, path: '/ws/notifications' });
+    // ── WebSocket Servers (notifications + realtime session) ────────
+    const wssNotifications = new WebSocketServer({ noServer: true });
+    const wssRealtime = new WebSocketServer({ noServer: true });
 
-    wss.on('connection', (ws, req) => {
+    server.on('upgrade', (req, socket, head) => {
+      const requestUrl = new URL(req.url, `http://localhost:${PORT}`);
+
+      if (requestUrl.pathname === '/ws/notifications') {
+        wssNotifications.handleUpgrade(req, socket, head, (ws) => {
+          wssNotifications.emit('connection', ws, req);
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === '/ws/realtime') {
+        wssRealtime.handleUpgrade(req, socket, head, (ws) => {
+          wssRealtime.emit('connection', ws, req);
+        });
+        return;
+      }
+
+      socket.destroy();
+    });
+
+    wssNotifications.on('connection', (ws, req) => {
       // Expect ?userId=xxx on connect
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const userId = url.searchParams.get('userId');
@@ -123,20 +195,106 @@ async function startServer() {
       });
     });
 
+    wssRealtime.on('connection', async (ws, req) => {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const userId = url.searchParams.get('userId');
+      const sessionId = url.searchParams.get('sessionId');
+
+      if (!userId || !sessionId) {
+        ws.close(4001, 'userId and sessionId required');
+        return;
+      }
+
+      ws.sessionId = sessionId;
+      ws.userId = userId;
+      ws.isAlive = true;
+
+      addRealtimeClient(sessionId, userId, ws);
+      await joinParticipant({ sessionId, userId, peerId: userId });
+
+      broadcastToSession(sessionId, {
+        type: 'participant_joined',
+        sessionId,
+        userId,
+        createdAt: new Date().toISOString()
+      });
+
+      ws.on('pong', () => {
+        ws.isAlive = true;
+      });
+
+      ws.on('message', async (raw) => {
+        let payload;
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          ws.send(JSON.stringify({ type: 'error', error: 'Invalid JSON payload' }));
+          return;
+        }
+
+        const context = {
+          userId,
+          sessionId,
+          broadcastToSession
+        };
+
+        try {
+          if (payload.type === 'chat_query') {
+            await handleChatQuery({ ws, payload, context });
+            return;
+          }
+
+          if (payload.type === 'voice_signal') {
+            await handleVoiceSignal({
+              payload: normalizeSignalPayload(payload),
+              context
+            });
+            return;
+          }
+
+          if (payload.type === 'voice_mute') {
+            await handleMuteState({ payload, context });
+            return;
+          }
+
+          if (payload.type === 'voice_speaking') {
+            await handleSpeakingState({ payload, context });
+          }
+        } catch (err) {
+          ws.send(JSON.stringify({ type: 'error', error: err.message }));
+        }
+      });
+
+      ws.on('close', async () => {
+        removeRealtimeClient(sessionId, userId, ws);
+        await leaveParticipant({ sessionId, userId });
+
+        broadcastToSession(sessionId, {
+          type: 'participant_left',
+          sessionId,
+          userId,
+          createdAt: new Date().toISOString()
+        });
+      });
+    });
+
     // Heartbeat interval to prune dead connections
     const heartbeatInterval = setInterval(() => {
-      wss.clients.forEach((ws) => {
+      const allSockets = [...wssNotifications.clients, ...wssRealtime.clients];
+      allSockets.forEach((ws) => {
         if (!ws.isAlive) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
       });
     }, 30000);
 
-    wss.on('close', () => clearInterval(heartbeatInterval));
+    wssNotifications.on('close', () => clearInterval(heartbeatInterval));
+    wssRealtime.on('close', () => clearInterval(heartbeatInterval));
 
     server.listen(PORT, () => {
       logger.info(`Notification service listening on port ${PORT}`);
       logger.info(`WebSocket endpoint: ws://localhost:${PORT}/ws/notifications`);
+      logger.info(`Realtime endpoint: ws://localhost:${PORT}/ws/realtime`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
     });
   } catch (error) {

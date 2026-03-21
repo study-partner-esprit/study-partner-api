@@ -117,6 +117,26 @@ app.use(
     timeout: 15000
   })
 );
+app.use(
+  '/api/v1/session-chat',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: NOTIFICATION_SERVICE_URL,
+    pathRewrite: { '^/api/v1/session-chat': '/api/v1/session-chat' },
+    proxyTimeout: 15000,
+    timeout: 15000
+  })
+);
+app.use(
+  '/api/v1/voice',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: NOTIFICATION_SERVICE_URL,
+    pathRewrite: { '^/api/v1/voice': '/api/v1/voice' },
+    proxyTimeout: 15000,
+    timeout: 15000
+  })
+);
 
 // Proxy for static uploads (Avatars) - Served by User Profile Service
 // Note: In production, use Nginx or S3/Cloud storage directly

@@ -25,6 +25,18 @@ const scheduleTasksSchema = Joi.object({
   }).optional()
 });
 
+const rescheduleSchema = Joi.object({
+  reason: Joi.string().trim().max(500).optional().default('manual')
+});
+
+const optimizeSchema = Joi.object({
+  reason: Joi.string().trim().max(500).optional().default('manual_optimize')
+});
+
+const applyCoachActionSchema = Joi.object({
+  coach_action: Joi.object().required()
+});
+
 const coachAdviceSchema = Joi.object({
   ignored_count: Joi.number().min(0).optional().default(0),
   do_not_disturb: Joi.boolean().optional().default(false),
@@ -236,6 +248,141 @@ router.post('/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) 
     });
   } catch (err) {
     res.status(500).json({ error: 'Scheduling failed', details: err.message });
+  }
+});
+
+// Trigger schedule re-orchestration for current user.
+router.post('/schedule/reschedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  const { error, value } = rescheduleSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/scheduler/reschedule`, {
+      user_id: req.user.userId,
+      reason: value.reason
+    });
+
+    res.json({
+      message: 'Reschedule request submitted',
+      result: response.data
+    });
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Reschedule failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
+router.post(
+  '/schedule/apply-coach-action',
+  tierGate('vip_plus', 'trial'),
+  async (req, res) => {
+    const { error, value } = applyCoachActionSchema.validate(req.body || {});
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    try {
+      const axios = require('axios');
+      const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+      const response = await axios.post(
+        `${AI_SERVICE_URL}/api/ai/scheduler/apply-coach-action`,
+        {
+          user_id: req.user.userId,
+          coach_action: value.coach_action
+        }
+      );
+
+      res.json({
+        message: 'Coach action applied to schedule',
+        result: response.data
+      });
+    } catch (err) {
+      if (err.response) {
+        return res.status(err.response.status).json({
+          error: 'Failed to apply coach action',
+          details: err.response.data.detail || err.message
+        });
+      }
+
+      return res.status(503).json({
+        error: 'AI service unavailable',
+        details: err.message
+      });
+    }
+  }
+);
+
+router.get('/schedule/status', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.get(
+      `${AI_SERVICE_URL}/api/ai/scheduler/status/${req.user.userId}`
+    );
+
+    res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Failed to fetch schedule status',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
+router.put('/schedule/optimize', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  const { error, value } = optimizeSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.put(`${AI_SERVICE_URL}/api/ai/scheduler/optimize`, {
+      user_id: req.user.userId,
+      reason: value.reason
+    });
+
+    res.json({
+      message: 'Schedule optimization complete',
+      result: response.data
+    });
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Schedule optimization failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
   }
 });
 

@@ -1,5 +1,7 @@
 const express = require('express');
 const notificationRoutes = require('./routes/notifications');
+const chatRoutes = require('./routes/chat');
+const voiceRoutes = require('./routes/voice');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -44,6 +46,8 @@ app.get('/api/v1/health', healthCheck('notification'));
 
 // Notification routes (require authentication)
 app.use('/api/v1/notifications', authenticate, notificationRoutes);
+app.use('/api/v1/session-chat', authenticate, chatRoutes);
+app.use('/api/v1/voice', authenticate, voiceRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

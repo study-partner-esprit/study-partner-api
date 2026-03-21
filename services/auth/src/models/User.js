@@ -58,6 +58,9 @@ const userSchema = new mongoose.Schema(
     subscriptionId: {
       type: String
     },
+    stripeCustomerId: {
+      type: String
+    },
     verificationToken: { type: String },
     verificationExpires: { type: Date },
     resetPasswordToken: { type: String },
