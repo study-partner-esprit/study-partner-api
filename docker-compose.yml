@@ -58,6 +58,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - ALLOW_TEST_COUPONS=${ALLOW_TEST_COUPONS:-true}
+      - COUPON_CODES=${COUPON_CODES:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/health"]
       interval: 30s
@@ -177,6 +179,7 @@ services:
       - PORT=3006
       - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/api/v1/health"]
       interval: 30s
@@ -185,6 +188,22 @@ services:
       start_period: 15s
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Notification Service - Port 3007
   notification-service:
@@ -204,6 +223,13 @@ services:
       - MONGO_SERVER_SELECTION_TIMEOUT_MS=${MONGO_SERVER_SELECTION_TIMEOUT_MS:-5000}
       - MONGO_CONNECT_TIMEOUT_MS=${MONGO_CONNECT_TIMEOUT_MS:-5000}
       - MONGO_SOCKET_TIMEOUT_MS=${MONGO_SOCKET_TIMEOUT_MS:-10000}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-Study Partner <no-reply@study-partner.local>}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3007/api/v1/health"]
       interval: 30s

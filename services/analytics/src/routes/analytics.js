@@ -1,8 +1,13 @@
 const express = require('express');
 const Joi = require('joi');
 const AnalyticsEvent = require('../models/AnalyticsEvent');
+const { getCacheClient } = require('@study-partner/shared');
 
 const router = express.Router();
+const cache = getCacheClient();
+
+const buildCacheKey = (userId, scope, query = {}) =>
+  `analytics:${scope}:${userId}:${JSON.stringify(query)}`;
 
 // Validation schema
 const trackEventSchema = Joi.object({
@@ -38,6 +43,12 @@ router.post('/track', async (req, res) => {
     metadata
   });
 
+  await cache.del(
+    buildCacheKey(userId, 'timeline'),
+    buildCacheKey(userId, 'summary'),
+    buildCacheKey(userId, 'insights')
+  );
+
   res.status(201).json({ message: 'Event tracked' });
 });
 
@@ -45,6 +56,16 @@ router.post('/track', async (req, res) => {
 router.get('/timeline', async (req, res) => {
   const userId = req.user.userId;
   const { startDate, endDate, limit = 50 } = req.query;
+  const cacheKey = buildCacheKey(userId, 'timeline', {
+    startDate: startDate || null,
+    endDate: endDate || null,
+    limit: Number(limit)
+  });
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    return res.json(JSON.parse(cached));
+  }
 
   const filter = { userId };
   if (startDate || endDate) {
@@ -55,13 +76,24 @@ router.get('/timeline', async (req, res) => {
 
   const events = await AnalyticsEvent.find(filter).sort({ timestamp: -1 }).limit(parseInt(limit));
 
-  res.json({ events });
+  const payload = { events };
+  await cache.setex(cacheKey, 60, JSON.stringify(payload));
+  res.json(payload);
 });
 
 // Get activity summary
 router.get('/summary', async (req, res) => {
   const userId = req.user.userId;
   const { startDate, endDate } = req.query;
+  const cacheKey = buildCacheKey(userId, 'summary', {
+    startDate: startDate || null,
+    endDate: endDate || null
+  });
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    return res.json(JSON.parse(cached));
+  }
 
   const filter = { userId };
   if (startDate || endDate) {
@@ -103,13 +135,15 @@ router.get('/summary', async (req, res) => {
     }
   }
 
-  res.json({
+  const payload = {
     totalEvents: events.length,
     eventCounts,
     activeDays: Object.keys(dailyActivity).length,
     currentStreak,
     longestStreak
-  });
+  };
+  await cache.setex(cacheKey, 120, JSON.stringify(payload));
+  res.json(payload);
 });
 
 // Get event statistics by type
@@ -149,6 +183,12 @@ router.get('/stats/:eventType', async (req, res) => {
 router.get('/insights', async (req, res) => {
   const userId = req.user.userId;
   const { days = 30 } = req.query;
+  const cacheKey = buildCacheKey(userId, 'insights', { days: Number(days) });
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    return res.json(JSON.parse(cached));
+  }
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - parseInt(days));
@@ -246,7 +286,9 @@ router.get('/insights', async (req, res) => {
         : 0
   };
 
-  res.json({ insights });
+  const payload = { insights };
+  await cache.setex(cacheKey, 120, JSON.stringify(payload));
+  res.json(payload);
 });
 
 module.exports = router;

@@ -44,6 +44,48 @@ const loginSchema = Joi.object({
   password: Joi.string().required()
 });
 
+const redeemCouponSchema = Joi.object({
+  coupon: Joi.string().trim().min(3).max(100).required(),
+  expectedTier: Joi.string().valid('vip', 'vip_plus', 'normal', 'trial').optional()
+});
+
+const COUPON_TIER_MAP = {
+  'admin@vip': 'vip',
+  'admin@vip+': 'vip_plus',
+  'admin@vip_plus': 'vip_plus',
+  'admin@normal': 'normal',
+  'admin@trial': 'trial'
+};
+
+function couponsEnabled() {
+  if (process.env.ALLOW_TEST_COUPONS === 'true') return true;
+  return process.env.NODE_ENV !== 'production';
+}
+
+function resolveTierFromCoupon(rawCoupon) {
+  const normalized = String(rawCoupon || '')
+    .trim()
+    .toLowerCase();
+
+  if (!normalized) return null;
+
+  if (COUPON_TIER_MAP[normalized]) {
+    return COUPON_TIER_MAP[normalized];
+  }
+
+  // Optional extra coupons from env: COUPON_CODES=code1:vip,code2:vip_plus
+  const envCoupons = (process.env.COUPON_CODES || '').split(',');
+  for (const entry of envCoupons) {
+    const [code, tier] = entry.split(':').map((v) => String(v || '').trim().toLowerCase());
+    if (!code || !tier) continue;
+    if (normalized === code && ['trial', 'normal', 'vip', 'vip_plus'].includes(tier)) {
+      return tier;
+    }
+  }
+
+  return null;
+}
+
 // Register
 router.post('/register', async (req, res) => {
   const { error } = registerSchema.validate(req.body);
@@ -247,6 +289,77 @@ router.put('/tier', authenticate, async (req, res) => {
   await user.save();
 
   res.json({ message: 'Tier updated successfully', user: user.toJSON() });
+});
+
+// Redeem plan coupon for testing and controlled plan assignment.
+router.post('/coupon/redeem', authenticate, async (req, res) => {
+  if (!couponsEnabled()) {
+    return res.status(403).json({ error: 'Coupon redemption disabled' });
+  }
+
+  const { error, value } = redeemCouponSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  const targetTier = resolveTierFromCoupon(value.coupon);
+  if (!targetTier) {
+    return res.status(400).json({ error: 'Invalid coupon code' });
+  }
+
+  if (value.expectedTier && value.expectedTier !== targetTier) {
+    return res.status(400).json({
+      error: `Coupon is for ${targetTier}, but selected plan is ${value.expectedTier}`
+    });
+  }
+
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  user.tier = targetTier;
+  user.tierChangedAt = new Date();
+  user.subscriptionId = null;
+
+  if (targetTier === 'trial') {
+    user.trialStartedAt = new Date();
+    user.trialExpiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+  }
+
+  await user.save();
+
+  return res.json({
+    message: 'Coupon redeemed successfully',
+    tier: user.tier,
+    user: user.toJSON()
+  });
+});
+
+// Dev helper to make test coupons discoverable.
+router.get('/coupon/list', authenticate, async (req, res) => {
+  if (!couponsEnabled()) {
+    return res.status(403).json({ error: 'Coupon listing disabled' });
+  }
+
+  const envCoupons = (process.env.COUPON_CODES || '')
+    .split(',')
+    .map((entry) => {
+      const [code, tier] = entry.split(':').map((v) => String(v || '').trim());
+      if (!code || !tier) return null;
+      return { code, tier };
+    })
+    .filter(Boolean);
+
+  return res.json({
+    coupons: [
+      { code: 'admin@vip', tier: 'vip' },
+      { code: 'admin@vip+', tier: 'vip_plus' },
+      { code: 'admin@normal', tier: 'normal' },
+      { code: 'admin@trial', tier: 'trial' },
+      ...envCoupons
+    ]
+  });
 });
 
 // ==================== Email Verification ====================

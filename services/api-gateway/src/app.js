@@ -29,6 +29,61 @@ app.get('/api/v1/health', (req, res) => {
   });
 });
 
+const OPENAPI_SPEC = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Study Partner API',
+    version: '1.0.0',
+    description: 'Gateway-level API reference for public service routes.'
+  },
+  servers: [{ url: '/' }],
+  paths: {
+    '/api/v1/health': { get: { summary: 'Gateway health check' } },
+    '/api/v1/auth/login': { post: { summary: 'Authenticate user' } },
+    '/api/v1/study/tasks': { get: { summary: 'List tasks' }, post: { summary: 'Create task' } },
+    '/api/v1/ai/plan/create': { post: { summary: 'Create AI-powered study plan' } },
+    '/api/v1/ai/coach': { post: { summary: 'Get coach decision' } },
+    '/api/v1/ai/evaluator/session': { post: { summary: 'Evaluate completed session' } },
+    '/api/v1/analytics/summary': { get: { summary: 'Get analytics summary' } },
+    '/api/v1/notifications': { get: { summary: 'List notifications' }, post: { summary: 'Create notification' } }
+  }
+};
+
+app.get('/api/v1/docs/openapi.json', (req, res) => {
+  res.json(OPENAPI_SPEC);
+});
+
+app.get('/api/v1/docs', (req, res) => {
+  res.type('html').send(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Study Partner API Docs</title>
+        <style>
+          body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+          .wrap { max-width: 920px; margin: 40px auto; padding: 0 20px; }
+          .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; }
+          a { color: #38bdf8; }
+          code { background: #1f2937; padding: 2px 6px; border-radius: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <h1>Study Partner API Docs</h1>
+          <div class="card">
+            <p>OpenAPI spec:</p>
+            <p><a href="/api/v1/docs/openapi.json">/api/v1/docs/openapi.json</a></p>
+            <p>Quick health check:</p>
+            <p><code>GET /api/v1/health</code></p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
 // Service URLs from environment
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:3001';
 const USER_PROFILE_SERVICE_URL =

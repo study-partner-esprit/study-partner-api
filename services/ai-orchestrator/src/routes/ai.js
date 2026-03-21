@@ -52,6 +52,13 @@ const searchAskSchema = Joi.object({
   session_id: Joi.string().optional().allow('', null)
 });
 
+const evaluateSessionSchema = Joi.object({
+  session_duration_minutes: Joi.number().integer().min(0).required(),
+  focus_score: Joi.number().min(0).max(100).required(),
+  completed_tasks: Joi.number().integer().min(0).optional().default(0),
+  skipped_tasks: Joi.number().integer().min(0).optional().default(0)
+});
+
 // Course Ingestion Agent
 router.post('/ingest', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   const { error } = ingestCourseSchema.validate(req.body);
@@ -383,6 +390,69 @@ router.put('/schedule/optimize', tierGate('vip', 'vip_plus', 'trial'), async (re
       error: 'AI service unavailable',
       details: err.message
     });
+  }
+});
+
+router.post('/evaluator/session', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  const { error, value } = evaluateSessionSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/session`, {
+      user_id: req.user.userId,
+      ...value
+    });
+
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Session evaluation failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
+router.get('/vector/status/:courseId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const response = await axios.get(
+      `${AI_SERVICE_URL}/api/ai/vector/status/${req.params.courseId}`
+    );
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
+    return res.status(503).json({ error: 'AI service unavailable', details: err.message });
+  }
+});
+
+router.post('/vector/rebuild/:courseId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const response = await axios.post(
+      `${AI_SERVICE_URL}/api/ai/vector/rebuild/${req.params.courseId}`
+    );
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json(err.response.data);
+    }
+    return res.status(503).json({ error: 'AI service unavailable', details: err.message });
   }
 });
 

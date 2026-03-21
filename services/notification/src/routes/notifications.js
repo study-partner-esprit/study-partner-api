@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const Notification = require('../models/Notification');
+const { isEmailEnabled, sendNotificationEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -112,7 +113,34 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    res.status(201).json(notification);
+    const shouldEmail =
+      isEmailEnabled() &&
+      ['achievement', 'level_up', 'study_reminder', 'session_start', 'plan_generated'].includes(
+        notification.type
+      );
+
+    let emailResult = null;
+    if (shouldEmail) {
+      emailResult = await sendNotificationEmail({ req, notification: notification.toObject() });
+    }
+
+    res.status(201).json({ ...notification.toObject(), email: emailResult });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/email/test', async (req, res, next) => {
+  try {
+    const payload = {
+      type: req.body?.type || 'system',
+      title: req.body?.title || 'Test Email Notification',
+      message: req.body?.message || 'This is a test email from Study Partner.',
+      metadata: req.body?.metadata || {}
+    };
+
+    const result = await sendNotificationEmail({ req, notification: payload });
+    res.json({ ok: true, result });
   } catch (err) {
     next(err);
   }
