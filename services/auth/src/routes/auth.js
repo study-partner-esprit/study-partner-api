@@ -41,7 +41,8 @@ const router = express.Router();
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
-  name: Joi.string().required()
+  name: Joi.string().required(),
+  role: Joi.string().valid('student', 'admin').optional()
 });
 
 const loginSchema = Joi.object({
@@ -134,7 +135,7 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: error.details[0].message });
   }
 
-  const { email, password, name } = req.body;
+  const { email, password, name, role } = req.body;
 
   // Check if user exists
   const existingUser = await User.findOne({ email });
@@ -148,10 +149,13 @@ router.post('/register', async (req, res) => {
   // Create user with trial tier
   const trialExpiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
   const verificationToken = crypto.randomBytes(32).toString('hex');
+  const userRole = role || 'student';
   const user = await User.create({
     email,
     password: hashedPassword,
     name,
+    role: userRole,
+    isAdmin: userRole === 'admin',
     tier: 'trial',
     trialStartedAt: new Date(),
     trialExpiresAt,
