@@ -6,7 +6,7 @@ const axios = require('axios');
 
 const router = express.Router();
 
-const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3007';
+const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
 
 // Helper: send notification
 async function notify(userId, type, title, message, metadata, authHeader) {
@@ -268,7 +268,8 @@ router.put('/request/:friendshipId/accept', async (req, res) => {
 
     // Award XP
     try {
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      const USER_PROFILE_URL =
+        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
       for (const uid of [friendship.requester, friendship.recipient]) {
         await axios.post(
           `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,

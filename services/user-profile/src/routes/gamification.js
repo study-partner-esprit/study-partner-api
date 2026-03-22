@@ -6,7 +6,8 @@ const Friendship = require('../models/Friendship');
 
 const router = express.Router();
 
-const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3007';
+const NOTIFICATION_SERVICE_URL =
+  process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
 
 // XP rewards configuration
 const XP_REWARDS = {

@@ -6,8 +6,15 @@ const UserRole = {
   ADMIN: 'admin'
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
+}
 
 /**
  * Hash a password using bcrypt
@@ -35,7 +42,7 @@ async function verifyPassword(password, hashedPassword) {
  * @returns {string}
  */
 function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: JWT_EXPIRES_IN
   });
 }
@@ -47,7 +54,7 @@ function generateToken(payload) {
  */
 function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch (error) {
     throw new Error('Invalid or expired token');
   }

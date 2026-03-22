@@ -36,7 +36,8 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 
 const app = express();
 
-app.set('trust proxy', true);
+// Trust only one proxy hop (api-gateway) to keep rate-limit IP checks safe.
+app.set('trust proxy', 1);
 
 // Body parsing middleware
 app.use(express.json());

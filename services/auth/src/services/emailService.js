@@ -91,4 +91,31 @@ async function sendPasswordResetEmail(to, token) {
   }
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+/**
+ * Send a subscription expiry reminder email.
+ */
+async function sendSubscriptionExpiryNotice(to, { tier, endDate, daysRemaining }) {
+  const t = await getTransporter();
+  const pricingLink = `${APP_URL}/pricing`;
+
+  const info = await t.sendMail({
+    from: FROM_ADDRESS,
+    to,
+    subject: 'Your StudyPartner subscription is ending soon',
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;">
+        <h2 style="color:#7c3aed;">Subscription Reminder</h2>
+        <p>Your <strong>${tier}</strong> plan expires on <strong>${new Date(endDate).toLocaleDateString()}</strong>.</p>
+        <p>You have <strong>${daysRemaining}</strong> day(s) left. You can change or renew your plan in the last 5 days of your cycle.</p>
+        <a href="${pricingLink}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Manage Plan</a>
+      </div>
+    `
+  });
+
+  console.log('[Email] Subscription reminder sent to', to, '| MessageId:', info.messageId);
+  if (info.messageId && !process.env.SMTP_HOST) {
+    console.log('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
+  }
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendSubscriptionExpiryNotice };

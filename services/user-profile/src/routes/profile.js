@@ -78,25 +78,6 @@ const requireUserLevel = async (userId, minLevel) => {
 // Get profile
 router.get('/', async (req, res) => {
   const userId = req.user.userId;
-  // Debug: log forwarded headers and host/proto to diagnose avatar URL construction
-  try {
-    console.log(
-      'GET /api/v1/users/profile - headers x-forwarded-host:',
-      req.headers['x-forwarded-host']
-    );
-    console.log(
-      'GET /api/v1/users/profile - headers x-forwarded-proto:',
-      req.headers['x-forwarded-proto'] || req.headers['x-forwarded-protocol']
-    );
-    console.log(
-      'GET /api/v1/users/profile - req.get(host):',
-      req.get('host'),
-      'protocol:',
-      req.protocol
-    );
-  } catch (e) {
-    console.error('Error logging forwarded headers', e);
-  }
 
   let profile = await UserProfile.findOne({ userId });
 
@@ -129,24 +110,6 @@ router.get('/', async (req, res) => {
 
 // Update profile (supports file upload or JSON)
 router.put('/', upload.single('avatarFile'), async (req, res) => {
-  // Detailed logging for debugging uploads
-  try {
-    console.log(
-      'PUT /api/v1/users/profile - file present:',
-      !!req.file,
-      'file:',
-      req.file && req.file.filename
-    );
-    console.log('PUT /api/v1/users/profile - body keys:', Object.keys(req.body));
-    console.log('PUT /api/v1/users/profile - sample body:', {
-      nickname: req.body.nickname,
-      bio: req.body.bio,
-      avatar: req.body.avatar
-    });
-  } catch (e) {
-    console.error('Error logging request data', e);
-  }
-
   // If file uploaded, convert to base64 data URL and store in body.avatar
   if (req.file && req.file.buffer) {
     const mime = req.file.mimetype || 'application/octet-stream';

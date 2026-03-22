@@ -21,7 +21,7 @@ const logger = {
 
 const PORT = process.env.PORT || 3007;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
-const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
 
 // ── WebSocket client registry ───────────────────────
 // Map<userId, Set<WebSocket>>

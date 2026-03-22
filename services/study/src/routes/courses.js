@@ -291,9 +291,9 @@ router.get('/:courseId', async (req, res) => {
 router.delete('/:courseId', async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { user_id } = req.query;
+    const userId = req.user.userId;
 
-    const course = await Course.findOneAndDelete({ _id: courseId, userId: user_id });
+    const course = await Course.findOneAndDelete({ _id: courseId, userId });
 
     if (!course) {
       return res.status(404).json({ error: 'Course not found' });
@@ -314,18 +314,14 @@ router.post(
   async (req, res) => {
     try {
       const { courseId } = req.params;
-      const { user_id } = req.query;
-
-      if (!user_id) {
-        return res.status(400).json({ error: 'user_id is required' });
-      }
+      const userId = req.user.userId;
 
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: 'At least one file is required' });
       }
 
       // Find the course
-      const course = await Course.findOne({ _id: courseId, userId: user_id });
+      const course = await Course.findOne({ _id: courseId, userId });
       if (!course) {
         return res.status(404).json({ error: 'Course not found' });
       }
@@ -369,7 +365,7 @@ router.post(
 
         // Add course data
         formData.append('course_title', course.title);
-        formData.append('user_id', user_id);
+        formData.append('user_id', userId);
         formData.append('subject_id', course.subjectId);
 
         // Add all files
@@ -485,7 +481,8 @@ router.post('/manual', async (req, res) => {
 
     // Auto-award XP
     try {
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      const USER_PROFILE_URL =
+        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
       await axios.post(
         `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
         {

@@ -3,7 +3,12 @@ const Joi = require('joi');
 const crypto = require('crypto');
 // const { hashPassword, verifyPassword, generateToken } = require('@study-partner/shared');
 const User = require('../models/User');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
+const Coupon = require('../models/Coupon');
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendSubscriptionExpiryNotice
+} = require('../services/emailService');
 const { authenticate } = require('@study-partner/shared/auth');
 
 // Temporary implementations until shared package is fixed
@@ -19,13 +24,13 @@ const verifyPassword = async (password, hash) => {
 };
 
 const generateToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+  return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '1h'
   });
 };
 
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key', {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'change-this-refresh-secret', {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   });
 };
@@ -47,6 +52,11 @@ const loginSchema = Joi.object({
 const redeemCouponSchema = Joi.object({
   coupon: Joi.string().trim().min(3).max(100).required(),
   expectedTier: Joi.string().valid('vip', 'vip_plus', 'normal', 'trial').optional()
+});
+
+const planChangeSchema = Joi.object({
+  newTier: Joi.string().valid('normal', 'vip', 'vip_plus').required(),
+  durationMonths: Joi.number().integer().min(1).max(24).default(1)
 });
 
 const COUPON_TIER_MAP = {
@@ -86,6 +96,37 @@ function resolveTierFromCoupon(rawCoupon) {
   return null;
 }
 
+function getSubscriptionSnapshot(user) {
+  const now = new Date();
+  const endDate = user.subscriptionEndAt ? new Date(user.subscriptionEndAt) : null;
+  const hasActiveSubscription =
+    !!endDate &&
+    endDate > now &&
+    ['vip', 'vip_plus'].includes(user.tier);
+
+  const daysRemaining = hasActiveSubscription
+    ? Math.max(0, Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const canChangePlan = hasActiveSubscription ? daysRemaining <= 5 : true;
+  const daysUntilCanChange = hasActiveSubscription ? Math.max(0, daysRemaining - 5) : 0;
+
+  return {
+    hasActiveSubscription,
+    daysRemaining,
+    canChangePlan,
+    daysUntilCanChange
+  };
+}
+
+function withSubscriptionMeta(user) {
+  const safeUser = typeof user.toJSON === 'function' ? user.toJSON() : user;
+  return {
+    ...safeUser,
+    ...getSubscriptionSnapshot(safeUser)
+  };
+}
+
 // Register
 router.post('/register', async (req, res) => {
   const { error } = registerSchema.validate(req.body);
@@ -114,6 +155,10 @@ router.post('/register', async (req, res) => {
     tier: 'trial',
     trialStartedAt: new Date(),
     trialExpiresAt,
+    subscriptionStartAt: null,
+    subscriptionEndAt: null,
+    subscriptionDurationMonths: 0,
+    canChangeAfter: null,
     verificationToken,
     verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
   });
@@ -141,7 +186,7 @@ router.post('/register', async (req, res) => {
 
   res.status(201).json({
     message: 'User registered successfully',
-    user: user.toJSON(),
+    user: withSubscriptionMeta(user),
     token,
     refreshToken
   });
@@ -162,6 +207,10 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
+  if (user.isActive === false) {
+    return res.status(403).json({ error: 'Account is deactivated. Please contact support.' });
+  }
+
   // Verify password
   const isValid = await verifyPassword(password, user.password);
   if (!isValid) {
@@ -175,6 +224,9 @@ router.post('/login', async (req, res) => {
   }
 
   // Update last login
+  if (user.role === 'admin' && !user.isAdmin) {
+    user.isAdmin = true;
+  }
   user.lastLogin = new Date();
   await user.save();
 
@@ -196,7 +248,7 @@ router.post('/login', async (req, res) => {
 
   res.json({
     message: 'Login successful',
-    user: user.toJSON(),
+    user: withSubscriptionMeta(user),
     token,
     refreshToken
   });
@@ -219,20 +271,21 @@ router.post('/refresh', async (req, res) => {
     // Fetch fresh user data for up-to-date tier
     const user = await User.findById(decoded.userId);
     const tier = user ? user.tier : decoded.tier || 'normal';
+    const role = user ? user.role : decoded.role || 'student';
     const trialExpiresAt = user ? user.trialExpiresAt : decoded.trialExpiresAt;
 
     // Generate new tokens with current tier
     const newToken = generateToken({
       userId: decoded.userId,
       email: decoded.email,
-      role: decoded.role,
+      role,
       tier,
       trialExpiresAt
     });
     const newRefreshToken = generateRefreshToken({
       userId: decoded.userId,
       email: decoded.email,
-      role: decoded.role,
+      role,
       tier,
       trialExpiresAt
     });
@@ -262,7 +315,94 @@ router.get('/me', authenticate, async (req, res) => {
     await user.save();
   }
 
-  res.json({ user: user.toJSON() });
+  if (
+    ['vip', 'vip_plus'].includes(user.tier) &&
+    user.subscriptionEndAt &&
+    new Date(user.subscriptionEndAt) <= new Date()
+  ) {
+    user.tier = 'normal';
+    user.tierChangedAt = new Date();
+    user.subscriptionId = null;
+    user.subscriptionStartAt = null;
+    user.subscriptionEndAt = null;
+    user.subscriptionDurationMonths = 0;
+    user.renewalDate = null;
+    user.canChangeAfter = null;
+    user.autoRenew = false;
+    await user.save();
+  }
+
+  const snapshot = getSubscriptionSnapshot(user);
+  if (
+    snapshot.hasActiveSubscription &&
+    snapshot.daysRemaining <= 5 &&
+    ['vip', 'vip_plus'].includes(user.tier)
+  ) {
+    const lastNoticeAt = user.subscriptionExpiryNoticeSentAt
+      ? new Date(user.subscriptionExpiryNoticeSentAt)
+      : null;
+    const shouldSendNotice = !lastNoticeAt || Date.now() - lastNoticeAt.getTime() > 24 * 60 * 60 * 1000;
+
+    if (shouldSendNotice) {
+      sendSubscriptionExpiryNotice(user.email, {
+        tier: user.tier,
+        endDate: user.subscriptionEndAt,
+        daysRemaining: snapshot.daysRemaining
+      }).catch((err) => {
+        console.warn('Failed to send subscription expiry reminder:', err.message);
+      });
+      user.subscriptionExpiryNoticeSentAt = new Date();
+      await user.save();
+    }
+  }
+
+  res.json({ user: withSubscriptionMeta(user) });
+});
+
+// Validate and apply manual plan change (used near end-of-cycle windows)
+router.post('/plan/change', authenticate, async (req, res) => {
+  const { error, value } = planChangeSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const snapshot = getSubscriptionSnapshot(user);
+  if (snapshot.hasActiveSubscription && !snapshot.canChangePlan) {
+    return res.status(403).json({
+      error: `Plan change is locked until last 5 days. ${snapshot.daysUntilCanChange} day(s) remaining.`
+    });
+  }
+
+  user.tier = value.newTier;
+  user.tierChangedAt = new Date();
+
+  if (value.newTier === 'normal') {
+    user.subscriptionId = null;
+    user.subscriptionStartAt = null;
+    user.subscriptionEndAt = null;
+    user.subscriptionDurationMonths = 0;
+    user.renewalDate = null;
+    user.canChangeAfter = null;
+    user.autoRenew = false;
+  } else {
+    const startAt = new Date();
+    const endAt = new Date(startAt);
+    endAt.setMonth(endAt.getMonth() + value.durationMonths);
+    user.subscriptionStartAt = startAt;
+    user.subscriptionEndAt = endAt;
+    user.subscriptionDurationMonths = value.durationMonths;
+    user.renewalDate = endAt;
+    user.canChangeAfter = new Date(endAt.getTime() - 5 * 24 * 60 * 60 * 1000);
+    user.autoRenew = false;
+  }
+
+  await user.save();
+  return res.json({ message: 'Plan changed', user: withSubscriptionMeta(user) });
 });
 
 // Update user tier (admin or payment webhook)
@@ -280,6 +420,13 @@ router.put('/tier', authenticate, async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  const snapshot = getSubscriptionSnapshot(user);
+  if (snapshot.hasActiveSubscription && !snapshot.canChangePlan && user.tier !== tier) {
+    return res.status(403).json({
+      error: `Plan change is locked until last 5 days. ${snapshot.daysUntilCanChange} day(s) remaining.`
+    });
+  }
+
   user.tier = tier;
   user.tierChangedAt = new Date();
   if (tier === 'trial') {
@@ -288,7 +435,7 @@ router.put('/tier', authenticate, async (req, res) => {
   }
   await user.save();
 
-  res.json({ message: 'Tier updated successfully', user: user.toJSON() });
+  res.json({ message: 'Tier updated successfully', user: withSubscriptionMeta(user) });
 });
 
 // Redeem plan coupon for testing and controlled plan assignment.
@@ -303,13 +450,17 @@ router.post('/coupon/redeem', authenticate, async (req, res) => {
   }
 
   const targetTier = resolveTierFromCoupon(value.coupon);
-  if (!targetTier) {
+  const normalizedCoupon = String(value.coupon || '').trim().toLowerCase();
+  const storedCoupon = await Coupon.findOne({ code: normalizedCoupon });
+
+  const resolvedTier = storedCoupon ? storedCoupon.targetTier : targetTier;
+  if (!resolvedTier) {
     return res.status(400).json({ error: 'Invalid coupon code' });
   }
 
-  if (value.expectedTier && value.expectedTier !== targetTier) {
+  if (value.expectedTier && value.expectedTier !== resolvedTier) {
     return res.status(400).json({
-      error: `Coupon is for ${targetTier}, but selected plan is ${value.expectedTier}`
+      error: `Coupon is for ${resolvedTier}, but selected plan is ${value.expectedTier}`
     });
   }
 
@@ -318,13 +469,55 @@ router.post('/coupon/redeem', authenticate, async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  user.tier = targetTier;
+  const snapshot = getSubscriptionSnapshot(user);
+  if (snapshot.hasActiveSubscription && !snapshot.canChangePlan && user.tier !== resolvedTier) {
+    return res.status(403).json({
+      error: `Plan change is locked until last 5 days. ${snapshot.daysUntilCanChange} day(s) remaining.`
+    });
+  }
+
+  if (storedCoupon) {
+    const couponCheck = storedCoupon.isRedeemableBy(user._id);
+    if (!couponCheck.redeemable) {
+      return res.status(400).json({ error: couponCheck.reason || 'Coupon is not redeemable' });
+    }
+  }
+
+  user.tier = resolvedTier;
   user.tierChangedAt = new Date();
   user.subscriptionId = null;
+  user.autoRenew = false;
 
-  if (targetTier === 'trial') {
+  if (resolvedTier === 'trial') {
     user.trialStartedAt = new Date();
     user.trialExpiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+    user.subscriptionStartAt = null;
+    user.subscriptionEndAt = null;
+    user.subscriptionDurationMonths = 0;
+    user.renewalDate = null;
+    user.canChangeAfter = null;
+  } else if (resolvedTier === 'normal') {
+    user.subscriptionStartAt = null;
+    user.subscriptionEndAt = null;
+    user.subscriptionDurationMonths = 0;
+    user.renewalDate = null;
+    user.canChangeAfter = null;
+  } else {
+    const durationDays = storedCoupon?.durationDays || 30;
+    const startAt = new Date();
+    const endAt = new Date(startAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    user.subscriptionStartAt = startAt;
+    user.subscriptionEndAt = endAt;
+    user.subscriptionDurationMonths = Math.max(1, Math.round(durationDays / 30));
+    user.renewalDate = endAt;
+    user.canChangeAfter = new Date(endAt.getTime() - 5 * 24 * 60 * 60 * 1000);
+  }
+
+  if (storedCoupon) {
+    storedCoupon.usageCount += 1;
+    storedCoupon.usedBy.push(user._id);
+    storedCoupon.usageHistory.push({ userId: user._id, redeemedAt: new Date() });
+    await storedCoupon.save();
   }
 
   await user.save();
@@ -332,7 +525,9 @@ router.post('/coupon/redeem', authenticate, async (req, res) => {
   return res.json({
     message: 'Coupon redeemed successfully',
     tier: user.tier,
-    user: user.toJSON()
+    couponExpiresAt: storedCoupon?.expiresAt || user.subscriptionEndAt || null,
+    couponDurationDays: storedCoupon?.durationDays || 30,
+    user: withSubscriptionMeta(user)
   });
 });
 
@@ -351,13 +546,26 @@ router.get('/coupon/list', authenticate, async (req, res) => {
     })
     .filter(Boolean);
 
+  const dbCoupons = await Coupon.find({ isActive: true })
+    .select('code targetTier durationDays expiresAt usageCount maxUses')
+    .sort({ createdAt: -1 })
+    .lean();
+
   return res.json({
     coupons: [
       { code: 'admin@vip', tier: 'vip' },
       { code: 'admin@vip+', tier: 'vip_plus' },
       { code: 'admin@normal', tier: 'normal' },
       { code: 'admin@trial', tier: 'trial' },
-      ...envCoupons
+      ...envCoupons,
+      ...dbCoupons.map((c) => ({
+        code: c.code,
+        tier: c.targetTier,
+        durationDays: c.durationDays,
+        expiresAt: c.expiresAt,
+        usageCount: c.usageCount,
+        maxUses: c.maxUses
+      }))
     ]
   });
 });

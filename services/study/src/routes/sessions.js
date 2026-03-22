@@ -518,7 +518,7 @@ router.post('/:sessionId/task/skip', async (req, res) => {
 // ==================== Team Session Endpoints ====================
 
 const crypto = require('crypto');
-const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3007';
+const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
 
 // POST /team — Create team session
 router.post('/team', async (req, res) => {
@@ -927,7 +927,8 @@ router.put('/team/:sessionId/end', async (req, res) => {
     await session.save();
 
     // Award XP to each participant
-    const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+    const USER_PROFILE_URL =
+      process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
     for (const p of session.participants) {
       try {
         const action = p.role === 'host' ? 'team_session_host' : 'team_session';

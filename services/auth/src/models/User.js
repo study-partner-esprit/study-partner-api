@@ -23,6 +23,16 @@ const userSchema = new mongoose.Schema(
       enum: ['student', 'admin'],
       default: 'student'
     },
+    isAdmin: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
     isVerified: {
       type: Boolean,
       default: false
@@ -57,6 +67,35 @@ const userSchema = new mongoose.Schema(
     },
     subscriptionId: {
       type: String
+    },
+    subscriptionStartAt: {
+      type: Date,
+      default: null
+    },
+    subscriptionEndAt: {
+      type: Date,
+      default: null,
+      index: true
+    },
+    subscriptionDurationMonths: {
+      type: Number,
+      default: 0
+    },
+    autoRenew: {
+      type: Boolean,
+      default: false
+    },
+    renewalDate: {
+      type: Date,
+      default: null
+    },
+    canChangeAfter: {
+      type: Date,
+      default: null
+    },
+    subscriptionExpiryNoticeSentAt: {
+      type: Date,
+      default: null
     },
     stripeCustomerId: {
       type: String

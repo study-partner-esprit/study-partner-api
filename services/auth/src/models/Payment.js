@@ -31,6 +31,18 @@ const paymentSchema = new mongoose.Schema(
       enum: ['normal', 'vip', 'vip_plus'],
       required: true
     },
+    durationMonths: {
+      type: Number,
+      default: 1
+    },
+    monthlyPriceCents: {
+      type: Number,
+      default: null
+    },
+    discountPercentage: {
+      type: Number,
+      default: 0
+    },
     status: {
       type: String,
       enum: ['pending', 'succeeded', 'failed', 'canceled'],

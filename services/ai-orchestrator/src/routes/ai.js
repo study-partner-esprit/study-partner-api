@@ -111,7 +111,8 @@ router.post('/plan/create', tierGate('vip', 'vip_plus', 'trial'), async (req, re
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+    const USER_PROFILE_URL =
+      process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
 
     // Fetch user's availability from user-profile service
     let calendar_events = [];

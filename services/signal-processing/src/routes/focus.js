@@ -143,7 +143,8 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
   // Auto-award XP for perfect focus sessions (score > 80)
   if (session.focusScore && session.focusScore > 80) {
     try {
-      const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+      const USER_PROFILE_URL =
+        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
       await axios.post(
         `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
         {
@@ -161,7 +162,8 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
 
   // Progress focus_session quests regardless of score
   try {
-    const USER_PROFILE_URL_Q = process.env.USER_PROFILE_SERVICE_URL || 'http://localhost:3002';
+    const USER_PROFILE_URL_Q =
+      process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
     await axios.post(
       `${USER_PROFILE_URL_Q}/api/v1/users/quests/progress`,
       {
