@@ -158,7 +158,9 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: ANALYTICS_SERVICE_URL,
-    pathRewrite: { '^/api/v1/analytics': '/api/v1/analytics' }
+    pathRewrite: { '^/api/v1/analytics': '/api/v1/analytics' },
+    proxyTimeout: 60000,
+    timeout: 60000
   })
 );
 app.use(

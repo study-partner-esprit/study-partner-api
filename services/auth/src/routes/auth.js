@@ -30,24 +30,37 @@ const generateToken = (payload) => {
 };
 
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'change-this-refresh-secret', {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   });
 };
 
 const router = express.Router();
 
+const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+
 // Validation schemas
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().min(8).required(),
+  password: Joi.string()
+    .pattern(PASSWORD_RULE)
+    .message(
+      'Password must be at least 8 characters and include uppercase, lowercase, number, and special character'
+    )
+    .required(),
   name: Joi.string().required(),
-  role: Joi.string().valid('student', 'admin').optional()
+  role: Joi.string().valid('student', 'admin').optional(),
+  adminKey: Joi.string().optional().allow('')
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().required()
+});
+
+const verifyOtpSchema = Joi.object({
+  email: Joi.string().email().required(),
+  otp: Joi.string().trim().length(6).pattern(/^\d{6}$/).required()
 });
 
 const redeemCouponSchema = Joi.object({
@@ -135,7 +148,7 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: error.details[0].message });
   }
 
-  const { email, password, name, role } = req.body;
+  const { email, password, name, role, adminKey } = req.body;
 
   // Check if user exists
   const existingUser = await User.findOne({ email });
@@ -149,7 +162,18 @@ router.post('/register', async (req, res) => {
   // Create user with trial tier
   const trialExpiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
   const verificationToken = crypto.randomBytes(32).toString('hex');
-  const userRole = role || 'student';
+  const requestedRole = role || 'student';
+  const userRole = requestedRole === 'admin' ? 'admin' : 'student';
+
+  if (userRole === 'admin') {
+    const expectedAdminKey = process.env.ADMIN_REGISTRATION_KEY;
+    if (!expectedAdminKey || adminKey !== expectedAdminKey) {
+      return res.status(403).json({ error: 'Admin registration is restricted' });
+    }
+  }
+
+  const verificationOtp = String(Math.floor(100000 + Math.random() * 900000));
+  const verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
   const user = await User.create({
     email,
     password: hashedPassword,
@@ -164,11 +188,13 @@ router.post('/register', async (req, res) => {
     subscriptionDurationMonths: 0,
     canChangeAfter: null,
     verificationToken,
-    verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
+    verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
+    verificationOtp,
+    verificationOtpExpires
   });
 
-  // Send verification email (non-blocking)
-  sendVerificationEmail(user.email, verificationToken).catch((err) => {
+  // Send verification email + OTP (non-blocking)
+  sendVerificationEmail(user.email, verificationToken, verificationOtp).catch((err) => {
     console.warn('Failed to send verification email:', err.message);
   });
 
@@ -269,7 +295,7 @@ router.post('/refresh', async (req, res) => {
   try {
     const decoded = jwt.verify(
       refreshToken,
-      process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key'
+      process.env.JWT_REFRESH_SECRET
     );
 
     // Fetch fresh user data for up-to-date tier
@@ -594,6 +620,8 @@ router.post('/verify-email', async (req, res) => {
     user.isVerified = true;
     user.verificationToken = undefined;
     user.verificationExpires = undefined;
+    user.verificationOtp = undefined;
+    user.verificationOtpExpires = undefined;
     await user.save();
 
     res.json({ message: 'Email verified successfully' });
@@ -614,15 +642,48 @@ router.post('/resend-verification', async (req, res) => {
     if (user.isVerified) return res.json({ message: 'Email already verified' });
 
     const token = crypto.randomBytes(32).toString('hex');
+    const verificationOtp = String(Math.floor(100000 + Math.random() * 900000));
     user.verificationToken = token;
     user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+    user.verificationOtp = verificationOtp;
+    user.verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await user.save();
 
-    await sendVerificationEmail(user.email, token);
+    await sendVerificationEmail(user.email, token, verificationOtp);
     res.json({ message: 'Verification email sent' });
   } catch (error) {
     console.error('Resend verification error:', error);
     res.status(500).json({ error: 'Failed to resend verification email' });
+  }
+});
+
+// POST /verify-otp — verify a user's email with otp code
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { error, value } = verifyOtpSchema.validate(req.body || {});
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const user = await User.findOne({
+      email: value.email.toLowerCase().trim(),
+      verificationOtp: value.otp,
+      verificationOtpExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationExpires = undefined;
+    user.verificationOtp = undefined;
+    user.verificationOtpExpires = undefined;
+    await user.save();
+
+    return res.json({ message: 'Email verified successfully' });
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    return res.status(500).json({ error: 'Failed to verify OTP' });
   }
 });
 
@@ -659,8 +720,11 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Token and new password are required' });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!PASSWORD_RULE.test(newPassword)) {
+      return res.status(400).json({
+        error:
+          'Password must be at least 8 characters and include uppercase, lowercase, number, and special character'
+      });
     }
 
     const user = await User.findOne({

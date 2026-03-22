@@ -40,9 +40,15 @@ const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 /**
  * Send an email verification link.
  */
-async function sendVerificationEmail(to, token) {
+async function sendVerificationEmail(to, token, otpCode) {
   const t = await getTransporter();
   const link = `${APP_URL}/verify-email/${token}`;
+  const otpMarkup = otpCode
+    ? `<div style="margin:16px 0;padding:12px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
+         <p style="margin:0 0 8px 0;font-size:13px;color:#666;">Verification code (expires in 10 minutes):</p>
+         <p style="margin:0;font-size:24px;letter-spacing:4px;font-weight:700;color:#222;">${otpCode}</p>
+       </div>`
+    : '';
 
   const info = await t.sendMail({
     from: FROM_ADDRESS,
@@ -50,8 +56,9 @@ async function sendVerificationEmail(to, token) {
     subject: 'Verify your StudyPartner email',
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px;">
-        <h2 style="color:#7c3aed;">Welcome to StudyPartner!</h2>
-        <p>Please click the button below to verify your email address:</p>
+        <h2 style="color:#7c3aed;">Welcome to StudyPartner</h2>
+        <p>Please verify your email address using the button below or OTP code.</p>
+        ${otpMarkup}
         <a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a>
         <p style="color:#888;font-size:12px;margin-top:24px;">If you didn't create an account, ignore this email. This link expires in 24 hours.</p>
       </div>

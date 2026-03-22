@@ -13,11 +13,12 @@ const {
 const { authenticate } = require('@study-partner/shared/auth');
 
 // --- Environment validation (fail-fast on missing secrets) ---
-const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
+const REQUIRED_ENV = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
 const INSECURE_DEFAULTS = [
   'your-super-secret-jwt-key-change-in-production',
   'your-secret-key',
-  'change-me'
+  'change-me',
+  'change-this-refresh-secret'
 ];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
@@ -28,6 +29,15 @@ for (const key of REQUIRED_ENV) {
 if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
   console.error(
     '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
+  );
+  process.exit(1);
+}
+if (
+  process.env.NODE_ENV === 'production' &&
+  INSECURE_DEFAULTS.includes(process.env.JWT_REFRESH_SECRET)
+) {
+  console.error(
+    '[FATAL] JWT_REFRESH_SECRET is set to an insecure default. Set a real secret before running in production.'
   );
   process.exit(1);
 }
@@ -61,6 +71,10 @@ const registerLimiter = rateLimiter(3, 60000); // 3 req/min for register
 app.post('/api/v1/auth/login', authLimiter);
 app.post('/api/v1/auth/register', registerLimiter);
 app.post('/api/v1/auth/forgot-password', rateLimiter(3, 60000));
+app.post('/api/v1/auth/resend-verification', rateLimiter(3, 60000));
+app.post('/api/v1/auth/verify-email', rateLimiter(10, 60000));
+app.post('/api/v1/auth/verify-otp', rateLimiter(10, 60000));
+app.post('/api/v1/auth/reset-password', rateLimiter(5, 60000));
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/auth/stripe', stripeRoutes.router);
 

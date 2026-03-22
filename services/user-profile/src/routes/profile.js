@@ -290,12 +290,21 @@ router.delete('/goals/:goalId', async (req, res) => {
   res.json({ message: 'Goal deleted' });
 });
 
-// PUT /online-status — Update online status (called by notification service)
+// PUT /online-status — Update online status for current user
 router.put('/online-status', async (req, res) => {
   try {
+    const requesterId = req.user?.userId;
     const { userId, onlineStatus } = req.body;
-    if (!userId || !['online', 'studying', 'offline'].includes(onlineStatus)) {
+    const targetUserId = userId || requesterId;
+
+    if (!targetUserId || !['online', 'studying', 'offline'].includes(onlineStatus)) {
       return res.status(400).json({ error: 'Invalid userId or status' });
+    }
+
+    // Prevent spoofing: only admins can update other users.
+    const isAdmin = req.user?.role === 'admin' || req.user?.isAdmin;
+    if (!isAdmin && targetUserId !== requesterId) {
+      return res.status(403).json({ error: 'Forbidden: cannot update another user status' });
     }
 
     const update = { onlineStatus };
@@ -303,11 +312,72 @@ router.put('/online-status', async (req, res) => {
       update.lastSeenAt = new Date();
     }
 
-    await UserProfile.findOneAndUpdate({ userId }, update, { upsert: false });
+    await UserProfile.findOneAndUpdate({ userId: targetUserId }, update, { upsert: false });
     res.json({ message: 'Status updated' });
   } catch (error) {
     console.error('Error updating online status:', error);
     res.status(500).json({ error: 'Failed to update status' });
+  }
+});
+
+// GET /online-status/batch?userIds=a,b,c — Resolve online states for leaderboard and social UI
+router.get('/online-status/batch', async (req, res) => {
+  try {
+    const rawUserIds = String(req.query.userIds || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (!rawUserIds.length) {
+      return res.json({ statuses: [] });
+    }
+
+    const profiles = await UserProfile.find({ userId: { $in: rawUserIds } })
+      .select('userId onlineStatus lastSeenAt updatedAt privacy')
+      .lean();
+
+    const now = Date.now();
+    const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
+
+    const statusMap = new Map(
+      profiles.map((profile) => {
+        const showOnlineStatus = profile?.privacy?.showOnlineStatus !== false;
+        const updatedAtMs = profile?.updatedAt ? new Date(profile.updatedAt).getTime() : 0;
+        const isFresh = now - updatedAtMs <= ACTIVE_WINDOW_MS;
+
+        const resolvedStatus = showOnlineStatus
+          ? isFresh && ['online', 'studying'].includes(profile.onlineStatus)
+            ? profile.onlineStatus
+            : 'offline'
+          : 'offline';
+
+        return [
+          profile.userId,
+          {
+            userId: profile.userId,
+            onlineStatus: resolvedStatus,
+            isOnline: resolvedStatus !== 'offline',
+            lastSeenAt: profile.lastSeenAt || profile.updatedAt || null,
+          },
+        ];
+      }),
+    );
+
+    const statuses = rawUserIds.map((userId) => {
+      return (
+        statusMap.get(userId) || {
+          userId,
+          onlineStatus: 'offline',
+          isOnline: false,
+          lastSeenAt: null,
+        }
+      );
+    });
+
+    return res.json({ statuses });
+  } catch (error) {
+    console.error('Error fetching online statuses:', error);
+    return res.status(500).json({ error: 'Failed to fetch online statuses' });
   }
 });
 
