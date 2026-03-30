@@ -239,6 +239,3 @@ npm test
 npm run lint
 ```
 
-## License
-
-MIT
