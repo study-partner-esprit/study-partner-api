@@ -105,7 +105,29 @@ const userSchema = new mongoose.Schema(
     verificationOtp: { type: String },
     verificationOtpExpires: { type: Date },
     resetPasswordToken: { type: String },
-    resetPasswordExpires: { type: Date }
+    resetPasswordExpires: { type: Date },
+    notificationPreferences: {
+      type: {
+        emailOnVerification: { type: Boolean, default: true },
+        emailOnLevelUp: { type: Boolean, default: true },
+        emailOnTaskDue: { type: Boolean, default: false },
+        emailOnSessionReminder: { type: Boolean, default: false },
+        emailOnWeeklySummary: { type: Boolean, default: true },
+        emailOnAchievement: { type: Boolean, default: true },
+        emailOnPasswordReset: { type: Boolean, default: true },
+        emailOnSubscriptionUpdate: { type: Boolean, default: true }
+      },
+      default: () => ({
+        emailOnVerification: true,
+        emailOnLevelUp: true,
+        emailOnTaskDue: false,
+        emailOnSessionReminder: false,
+        emailOnWeeklySummary: true,
+        emailOnAchievement: true,
+        emailOnPasswordReset: true,
+        emailOnSubscriptionUpdate: true
+      })
+    }
   },
   {
     timestamps: true

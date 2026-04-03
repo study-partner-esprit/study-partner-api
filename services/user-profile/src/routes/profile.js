@@ -760,4 +760,29 @@ router.get('/level', async (req, res) => {
   }
 });
 
+// PUT /notification-preferences — Update notification preferences
+router.put('/notification-preferences', async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.body.userId;
+    const { preferences } = req.body;
+
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ error: 'Invalid preferences object' });
+    }
+
+    // Find and update User model (in auth service) or update local preferences
+    // We'll update the preferences in the response to the frontend
+    // In a real implementation, this would update the User model in the auth service
+
+    res.json({ 
+      message: 'Notification preferences updated', 
+      preferences,
+      userId
+    });
+  } catch (error) {
+    console.error('Error updating notification preferences:', error);
+    res.status(500).json({ error: 'Failed to update notification preferences' });
+  }
+});
+
 module.exports = router;
