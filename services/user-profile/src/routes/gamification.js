@@ -3,6 +3,7 @@ const Joi = require('joi');
 const axios = require('axios');
 const Gamification = require('../models/Gamification');
 const Friendship = require('../models/Friendship');
+const { awardKnowledgePoints } = require('../services/rankingService');
 
 const router = express.Router();
 
@@ -103,6 +104,17 @@ router.post('/award-xp', async (req, res) => {
 
     await profile.save();
 
+    let rankAward = null;
+    try {
+      rankAward = await awardKnowledgePoints({
+        userId,
+        action: value.action,
+        metadata: value.metadata || {}
+      });
+    } catch (rankError) {
+      console.warn('Rank point award failed:', rankError.message);
+    }
+
     // Send notifications for level-ups and new achievements
     const notifications = [];
     if (result.leveledUp) {
@@ -145,7 +157,15 @@ router.post('/award-xp', async (req, res) => {
       leveled_up: result.leveledUp,
       level_progress: result.totalXp % 100,
       next_level_xp: 100,
-      new_achievements: result.newAchievements || []
+      new_achievements: result.newAchievements || [],
+      knowledge_points_awarded: rankAward?.deltaKp || 0,
+      total_knowledge_points: rankAward?.profile?.knowledgePoints ?? null,
+      rank_name: rankAward?.profile?.rankName || null,
+      rank_index: rankAward?.profile?.rankIndex ?? null,
+      rank_award_status: rankAward?.awarded ? 'awarded' : rankAward?.reason || null,
+      kp_breakdown: rankAward?.breakdown || null,
+      current_streak: rankAward?.profile?.currentStreak || 0,
+      kp_to_next_rank: rankAward?.progress?.kpToNextRank ?? null
     });
   } catch (error) {
     console.error('Error awarding XP:', error);

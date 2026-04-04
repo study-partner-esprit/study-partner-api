@@ -2,6 +2,7 @@ const express = require('express');
 const profileRoutes = require('./routes/profile');
 const availabilityRoutes = require('./routes/availability');
 const gamificationRoutes = require('./routes/gamification');
+const rankingRoutes = require('./routes/ranking');
 const questRoutes = require('./routes/quests');
 const friendRoutes = require('./routes/friends');
 const {
@@ -64,6 +65,9 @@ app.use('/api/v1/users/availability', authenticate, availabilityRoutes);
 
 // Protected gamification routes (require authentication)
 app.use('/api/v1/users/gamification', authenticate, gamificationRoutes);
+
+// Protected ranking routes (require authentication)
+app.use('/api/v1/users/gamification/rank', authenticate, rankingRoutes);
 
 // Protected quest routes (require authentication)
 app.use('/api/v1/users/quests', authenticate, questRoutes);

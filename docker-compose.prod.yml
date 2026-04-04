@@ -42,9 +42,11 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_FROM=${SMTP_FROM:-noreply@studypartner.app}
+      - EMAIL_FROM=${EMAIL_FROM:-StudyPartner <noreply@studypartner.app>}
       - APP_URL=${APP_URL:-https://studypartner.app}
     depends_on:
       mongodb:
@@ -128,6 +130,13 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM:-Study Partner <no-reply@study-partner.local>}
     depends_on:
       mongodb:
         condition: service_healthy

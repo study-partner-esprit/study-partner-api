@@ -16,6 +16,7 @@ const mockUser = {
   email: 'test@example.com',
   name: 'Test User',
   password: '$2a$10$hashedpassword',
+  isVerified: true,
   role: 'student',
   lastLogin: null,
   save: jest.fn().mockResolvedValue(true),
@@ -35,6 +36,22 @@ jest.mock('bcryptjs', () => ({
   compare: jest.fn()
 }));
 
+jest.mock('@study-partner/shared/auth', () => ({
+  authenticate: (req, res, next) => {
+    if (!req.headers.authorization) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    req.user = { userId: '507f1f77bcf86cd799439011', role: 'student' };
+    return next();
+  }
+}));
+
+jest.mock('../services/emailService', () => ({
+  sendVerificationEmail: jest.fn().mockResolvedValue({ success: true }),
+  sendPasswordResetEmail: jest.fn().mockResolvedValue({ success: true }),
+  sendSubscriptionExpiryNotice: jest.fn().mockResolvedValue({ success: true })
+}));
+
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 
@@ -42,18 +59,7 @@ const bcrypt = require('bcryptjs');
 const authRoutes = require('../routes/auth');
 const app = express();
 app.use(express.json());
-
-// Fake auth middleware for /me
-app.use(
-  '/api/v1/auth',
-  (req, res, next) => {
-    if (req.headers.authorization) {
-      req.user = { userId: '507f1f77bcf86cd799439011' };
-    }
-    next();
-  },
-  authRoutes
-);
+app.use('/api/v1/auth', authRoutes);
 
 // Use supertest
 const request = require('supertest');
@@ -71,11 +77,11 @@ describe('Auth Service', () => {
 
       const res = await request(app)
         .post('/api/v1/auth/register')
-        .send({ email: 'test@example.com', password: 'Password123', name: 'Test User' });
+        .send({ email: 'test@example.com', password: 'Password123!', name: 'Test User' });
 
       expect(res.status).toBe(201);
-      expect(res.body).toHaveProperty('token');
-      expect(res.body).toHaveProperty('refreshToken');
+      expect(res.body.requiresVerification).toBe(true);
+      expect(res.body.verification.email).toBe('test@example.com');
       expect(res.body.user.email).toBe('test@example.com');
     });
 
@@ -84,7 +90,7 @@ describe('Auth Service', () => {
 
       const res = await request(app)
         .post('/api/v1/auth/register')
-        .send({ email: 'test@example.com', password: 'Password123', name: 'Test User' });
+        .send({ email: 'test@example.com', password: 'Password123!', name: 'Test User' });
 
       expect(res.status).toBe(409);
       expect(res.body.error).toMatch(/already exists/i);
@@ -105,11 +111,23 @@ describe('Auth Service', () => {
 
       const res = await request(app)
         .post('/api/v1/auth/login')
-        .send({ email: 'test@example.com', password: 'Password123' });
+        .send({ email: 'test@example.com', password: 'Password123!' });
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('token');
       expect(res.body.message).toBe('Login successful');
+    });
+
+    it('should reject login for unverified users', async () => {
+      User.findOne.mockResolvedValue({ ...mockUser, isVerified: false });
+      bcrypt.compare.mockResolvedValue(true);
+
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'test@example.com', password: 'Password123!' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('EMAIL_NOT_VERIFIED');
     });
 
     it('should reject invalid email', async () => {
@@ -117,7 +135,7 @@ describe('Auth Service', () => {
 
       const res = await request(app)
         .post('/api/v1/auth/login')
-        .send({ email: 'wrong@example.com', password: 'Password123' });
+        .send({ email: 'wrong@example.com', password: 'Password123!' });
 
       expect(res.status).toBe(401);
     });
@@ -128,7 +146,7 @@ describe('Auth Service', () => {
 
       const res = await request(app)
         .post('/api/v1/auth/login')
-        .send({ email: 'test@example.com', password: 'WrongPass' });
+        .send({ email: 'test@example.com', password: 'WrongPass!' });
 
       expect(res.status).toBe(401);
     });
