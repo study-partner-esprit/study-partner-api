@@ -38,6 +38,19 @@ const generateRefreshToken = (payload) => {
 const router = express.Router();
 
 const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+const onboardingSchema = Joi.object({
+  studyGoals: Joi.array().items(Joi.string().trim().min(2).max(80)).max(10).optional(),
+  preferredSubjects: Joi.array().items(Joi.string().trim().min(2).max(80)).max(20).optional(),
+  weeklyHours: Joi.number().min(0).max(120).optional(),
+  studyLevel: Joi.string().valid('beginner', 'intermediate', 'advanced').optional(),
+  studyTime: Joi.string().valid('morning', 'afternoon', 'evening', 'night').optional(),
+  timezone: Joi.string().trim().max(100).optional(),
+  language: Joi.string().trim().max(20).optional(),
+  notificationPreferences: Joi.object({
+    email: Joi.boolean().optional(),
+    push: Joi.boolean().optional()
+  }).optional()
+}).optional();
 
 // Validation schemas
 const registerSchema = Joi.object({
@@ -49,6 +62,7 @@ const registerSchema = Joi.object({
     )
     .required(),
   name: Joi.string().required(),
+  onboarding: onboardingSchema,
   role: Joi.string().valid('student', 'admin').optional(),
   adminKey: Joi.string().optional().allow('')
 });
@@ -80,6 +94,48 @@ const COUPON_TIER_MAP = {
   'admin@normal': 'normal',
   'admin@trial': 'trial'
 };
+
+function normalizeOnboardingDraft(input = {}) {
+  const cleaned = {
+    studyGoals: Array.isArray(input.studyGoals)
+      ? input.studyGoals.map((item) => String(item).trim()).filter(Boolean).slice(0, 10)
+      : [],
+    preferredSubjects: Array.isArray(input.preferredSubjects)
+      ? input.preferredSubjects
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+    weeklyHours: Number.isFinite(input.weeklyHours) ? Number(input.weeklyHours) : 0,
+    studyLevel: ['beginner', 'intermediate', 'advanced'].includes(input.studyLevel)
+      ? input.studyLevel
+      : 'beginner',
+    studyTime: ['morning', 'afternoon', 'evening', 'night'].includes(input.studyTime)
+      ? input.studyTime
+      : 'evening',
+    timezone: String(input.timezone || 'UTC').trim() || 'UTC',
+    language: String(input.language || 'en').trim() || 'en',
+    notificationPreferences: {
+      email:
+        typeof input.notificationPreferences?.email === 'boolean'
+          ? input.notificationPreferences.email
+          : true,
+      push:
+        typeof input.notificationPreferences?.push === 'boolean'
+          ? input.notificationPreferences.push
+          : true
+    }
+  };
+
+  if (!Number.isFinite(cleaned.weeklyHours) || cleaned.weeklyHours < 0) {
+    cleaned.weeklyHours = 0;
+  }
+  if (cleaned.weeklyHours > 120) {
+    cleaned.weeklyHours = 120;
+  }
+
+  return cleaned;
+}
 
 function couponsEnabled() {
   if (process.env.ALLOW_TEST_COUPONS === 'true') return true;
@@ -148,10 +204,11 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: error.details[0].message });
   }
 
-  const { email, password, name, role, adminKey } = req.body;
+  const { email, password, name, role, adminKey, onboarding } = req.body;
+  const normalizedEmail = String(email).toLowerCase().trim();
 
   // Check if user exists
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email: normalizedEmail });
   if (existingUser) {
     return res.status(409).json({ error: 'User already exists' });
   }
@@ -175,7 +232,7 @@ router.post('/register', async (req, res) => {
   const verificationOtp = String(Math.floor(100000 + Math.random() * 900000));
   const verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
   const user = await User.create({
-    email,
+    email: normalizedEmail,
     password: hashedPassword,
     name,
     role: userRole,
@@ -187,6 +244,7 @@ router.post('/register', async (req, res) => {
     subscriptionEndAt: null,
     subscriptionDurationMonths: 0,
     canChangeAfter: null,
+    onboardingDraft: normalizeOnboardingDraft(onboarding || {}),
     verificationToken,
     verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
     verificationOtp,
@@ -198,27 +256,15 @@ router.post('/register', async (req, res) => {
     console.warn('Failed to send verification email:', err.message);
   });
 
-  // Generate tokens (include tier in JWT payload)
-  const token = generateToken({
-    userId: user._id,
-    email: user.email,
-    role: user.role,
-    tier: user.tier,
-    trialExpiresAt: user.trialExpiresAt
-  });
-  const refreshToken = generateRefreshToken({
-    userId: user._id,
-    email: user.email,
-    role: user.role,
-    tier: user.tier,
-    trialExpiresAt: user.trialExpiresAt
-  });
-
   res.status(201).json({
-    message: 'User registered successfully',
-    user: withSubscriptionMeta(user),
-    token,
-    refreshToken
+    message: 'Registration successful. Please verify your email to continue.',
+    requiresVerification: true,
+    verification: {
+      email: user.email,
+      otpExpiresInMinutes: 10,
+      linkExpiresInHours: 24
+    },
+    user: withSubscriptionMeta(user)
   });
 });
 
@@ -230,9 +276,10 @@ router.post('/login', async (req, res) => {
   }
 
   const { email, password } = req.body;
+  const normalizedEmail = String(email).toLowerCase().trim();
 
   // Find user
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
@@ -245,6 +292,14 @@ router.post('/login', async (req, res) => {
   const isValid = await verifyPassword(password, user.password);
   if (!isValid) {
     return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  if (!user.isVerified) {
+    return res.status(403).json({
+      error: 'Email is not verified. Please verify your email first.',
+      code: 'EMAIL_NOT_VERIFIED',
+      email: user.email
+    });
   }
 
   // Auto-downgrade expired trials
@@ -618,6 +673,7 @@ router.post('/verify-email', async (req, res) => {
     }
 
     user.isVerified = true;
+    user.onboardingCompletedAt = user.onboardingCompletedAt || new Date();
     user.verificationToken = undefined;
     user.verificationExpires = undefined;
     user.verificationOtp = undefined;
@@ -636,8 +692,9 @@ router.post('/resend-verification', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
+    const normalizedEmail = String(email).toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.isVerified) return res.json({ message: 'Email already verified' });
 
@@ -674,6 +731,7 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     user.isVerified = true;
+    user.onboardingCompletedAt = user.onboardingCompletedAt || new Date();
     user.verificationToken = undefined;
     user.verificationExpires = undefined;
     user.verificationOtp = undefined;
@@ -694,8 +752,9 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
+    const normalizedEmail = String(email).toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     // Always return success to prevent email enumeration
     if (!user) return res.json({ message: 'If an account exists, a reset link has been sent' });
 

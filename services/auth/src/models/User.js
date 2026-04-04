@@ -127,6 +127,53 @@ const userSchema = new mongoose.Schema(
         emailOnPasswordReset: true,
         emailOnSubscriptionUpdate: true
       })
+    },
+    onboardingDraft: {
+      studyGoals: {
+        type: [String],
+        default: []
+      },
+      preferredSubjects: {
+        type: [String],
+        default: []
+      },
+      weeklyHours: {
+        type: Number,
+        min: 0,
+        default: 0
+      },
+      studyLevel: {
+        type: String,
+        enum: ['beginner', 'intermediate', 'advanced'],
+        default: 'beginner'
+      },
+      studyTime: {
+        type: String,
+        enum: ['morning', 'afternoon', 'evening', 'night'],
+        default: 'evening'
+      },
+      timezone: {
+        type: String,
+        default: 'UTC'
+      },
+      language: {
+        type: String,
+        default: 'en'
+      },
+      notificationPreferences: {
+        email: {
+          type: Boolean,
+          default: true
+        },
+        push: {
+          type: Boolean,
+          default: true
+        }
+      }
+    },
+    onboardingCompletedAt: {
+      type: Date,
+      default: null
     }
   },
   {
