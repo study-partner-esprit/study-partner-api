@@ -154,9 +154,7 @@ describe('Signal Processing Service', () => {
         { hour: 18, focusLevel: 4 }
       ];
 
-      const peakHour = signals.reduce((max, s) =>
-        s.focusLevel > max.focusLevel ? s : max
-      );
+      const peakHour = signals.reduce((max, s) => (s.focusLevel > max.focusLevel ? s : max));
 
       expect(peakHour.hour).toBe(9);
       expect(peakHour.focusLevel).toBe(9);
