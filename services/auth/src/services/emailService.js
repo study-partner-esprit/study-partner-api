@@ -3,8 +3,22 @@ const nodemailer = require('nodemailer');
 // Create transport (uses env vars; falls back to Ethereal for dev)
 let transporter = null;
 
+function logEmail(...args) {
+  if (process.env.NODE_ENV !== 'test') {
+    console.log(...args);
+  }
+}
+
 async function getTransporter() {
   if (transporter) return transporter;
+
+  // Avoid network calls and async logs in test runs.
+  if (process.env.NODE_ENV === 'test') {
+    transporter = {
+      sendMail: async () => ({ messageId: 'test-message-id' })
+    };
+    return transporter;
+  }
 
   if (process.env.SMTP_HOST) {
     transporter = nodemailer.createTransport({
@@ -28,7 +42,7 @@ async function getTransporter() {
         pass: testAccount.pass
       }
     });
-    console.log('[Email] Using Ethereal test account:', testAccount.user);
+    logEmail('[Email] Using Ethereal test account:', testAccount.user);
   }
 
   return transporter;
@@ -65,9 +79,9 @@ async function sendVerificationEmail(to, token, otpCode) {
     `
   });
 
-  console.log('[Email] Verification sent to', to, '| MessageId:', info.messageId);
+  logEmail('[Email] Verification sent to', to, '| MessageId:', info.messageId);
   if (info.messageId && !process.env.SMTP_HOST) {
-    console.log('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
+    logEmail('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
   }
 }
 
@@ -92,9 +106,9 @@ async function sendPasswordResetEmail(to, token) {
     `
   });
 
-  console.log('[Email] Reset sent to', to, '| MessageId:', info.messageId);
+  logEmail('[Email] Reset sent to', to, '| MessageId:', info.messageId);
   if (info.messageId && !process.env.SMTP_HOST) {
-    console.log('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
+    logEmail('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
   }
 }
 
@@ -119,9 +133,9 @@ async function sendSubscriptionExpiryNotice(to, { tier, endDate, daysRemaining }
     `
   });
 
-  console.log('[Email] Subscription reminder sent to', to, '| MessageId:', info.messageId);
+  logEmail('[Email] Subscription reminder sent to', to, '| MessageId:', info.messageId);
   if (info.messageId && !process.env.SMTP_HOST) {
-    console.log('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
+    logEmail('[Email] Preview URL:', nodemailer.getTestMessageUrl(info));
   }
 }
 

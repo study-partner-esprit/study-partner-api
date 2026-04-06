@@ -17,7 +17,7 @@
     "start": "npm run start --workspaces --if-present",
     "build": "echo 'No build step required for Node.js services' && exit 0",
     "test": "npm run test --workspaces --if-present",
-    "test:unit": "jest --coverage --passWithNoTests",
+    "test:unit": "jest --coverage --passWithNoTests --testPathIgnorePatterns=tests/integration",
     "test:integration": "jest --testPathPattern=tests/integration --passWithNoTests",
     "test:security": "npm audit --audit-level=high || true",
     "lint": "npm run lint --workspaces --if-present",
