@@ -74,7 +74,11 @@ const loginSchema = Joi.object({
 
 const verifyOtpSchema = Joi.object({
   email: Joi.string().email().required(),
-  otp: Joi.string().trim().length(6).pattern(/^\d{6}$/).required()
+  otp: Joi.string()
+    .trim()
+    .length(6)
+    .pattern(/^\d{6}$/)
+    .required()
 });
 
 const redeemCouponSchema = Joi.object({
@@ -98,7 +102,10 @@ const COUPON_TIER_MAP = {
 function normalizeOnboardingDraft(input = {}) {
   const cleaned = {
     studyGoals: Array.isArray(input.studyGoals)
-      ? input.studyGoals.map((item) => String(item).trim()).filter(Boolean).slice(0, 10)
+      ? input.studyGoals
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+          .slice(0, 10)
       : [],
     preferredSubjects: Array.isArray(input.preferredSubjects)
       ? input.preferredSubjects
@@ -156,7 +163,11 @@ function resolveTierFromCoupon(rawCoupon) {
   // Optional extra coupons from env: COUPON_CODES=code1:vip,code2:vip_plus
   const envCoupons = (process.env.COUPON_CODES || '').split(',');
   for (const entry of envCoupons) {
-    const [code, tier] = entry.split(':').map((v) => String(v || '').trim().toLowerCase());
+    const [code, tier] = entry.split(':').map((v) =>
+      String(v || '')
+        .trim()
+        .toLowerCase()
+    );
     if (!code || !tier) continue;
     if (normalized === code && ['trial', 'normal', 'vip', 'vip_plus'].includes(tier)) {
       return tier;
@@ -170,9 +181,7 @@ function getSubscriptionSnapshot(user) {
   const now = new Date();
   const endDate = user.subscriptionEndAt ? new Date(user.subscriptionEndAt) : null;
   const hasActiveSubscription =
-    !!endDate &&
-    endDate > now &&
-    ['vip', 'vip_plus'].includes(user.tier);
+    !!endDate && endDate > now && ['vip', 'vip_plus'].includes(user.tier);
 
   const daysRemaining = hasActiveSubscription
     ? Math.max(0, Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)))
@@ -348,10 +357,7 @@ router.post('/refresh', async (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET
-    );
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
 
     // Fetch fresh user data for up-to-date tier
     const user = await User.findById(decoded.userId);
@@ -426,7 +432,8 @@ router.get('/me', authenticate, async (req, res) => {
     const lastNoticeAt = user.subscriptionExpiryNoticeSentAt
       ? new Date(user.subscriptionExpiryNoticeSentAt)
       : null;
-    const shouldSendNotice = !lastNoticeAt || Date.now() - lastNoticeAt.getTime() > 24 * 60 * 60 * 1000;
+    const shouldSendNotice =
+      !lastNoticeAt || Date.now() - lastNoticeAt.getTime() > 24 * 60 * 60 * 1000;
 
     if (shouldSendNotice) {
       sendSubscriptionExpiryNotice(user.email, {
@@ -535,7 +542,9 @@ router.post('/coupon/redeem', authenticate, async (req, res) => {
   }
 
   const targetTier = resolveTierFromCoupon(value.coupon);
-  const normalizedCoupon = String(value.coupon || '').trim().toLowerCase();
+  const normalizedCoupon = String(value.coupon || '')
+    .trim()
+    .toLowerCase();
   const storedCoupon = await Coupon.findOne({ code: normalizedCoupon });
 
   const resolvedTier = storedCoupon ? storedCoupon.targetTier : targetTier;

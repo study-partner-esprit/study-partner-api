@@ -7,8 +7,8 @@ const templates = {
   /**
    * Email verification on registration
    */
-  verificationEmail: (otpCode, verificationLink, name = "User") => ({
-    subject: "🎓 Study Partner - Verify Your Email",
+  verificationEmail: (otpCode, verificationLink, name = 'User') => ({
+    subject: '🎓 Study Partner - Verify Your Email',
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
         <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
@@ -43,8 +43,8 @@ const templates = {
   /**
    * Password reset email
    */
-  passwordResetEmail: (resetLink, name = "User", expiresIn = "1 hour") => ({
-    subject: "🔐 Study Partner - Reset Your Password",
+  passwordResetEmail: (resetLink, name = 'User', expiresIn = '1 hour') => ({
+    subject: '🔐 Study Partner - Reset Your Password',
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
         <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
@@ -88,8 +88,8 @@ const templates = {
   /**
    * Study reminder email
    */
-  studyReminderEmail: (taskTitle, taskDueDate, name = "Student") => ({
-    subject: "📚 Study Partner - Time to Study!",
+  studyReminderEmail: (taskTitle, taskDueDate, name = 'Student') => ({
+    subject: '📚 Study Partner - Time to Study!',
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
         <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
@@ -99,7 +99,7 @@ const templates = {
           <div style="background: #f5f5f5; border-left: 4px solid #667eea; border-radius: 4px; padding: 20px; margin: 30px 0;">
             <h3 style="color: #333; margin: 0 0 10px 0; font-size: 18px;">${taskTitle}</h3>
             <p style="color: #666; margin: 0; font-size: 14px;">
-              📅 Due: ${new Date(taskDueDate).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              📅 Due: ${new Date(taskDueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
           
@@ -126,7 +126,7 @@ const templates = {
   /**
    * Achievement/Level up notification
    */
-  achievementEmail: (achievementName, newLevel, bonusXP = 0, name = "Student") => ({
+  achievementEmail: (achievementName, newLevel, bonusXP = 0, name = 'Student') => ({
     subject: `🎉 Study Partner - Level ${newLevel} Achieved!`,
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
@@ -137,7 +137,7 @@ const templates = {
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; color: white;">
             <h2 style="margin: 0 0 10px 0; font-size: 24px;">${achievementName}</h2>
             <p style="margin: 10px 0; font-size: 18px;">🏆 Level <strong>${newLevel}</strong></p>
-            ${bonusXP > 0 ? `<p style="margin: 10px 0; font-size: 16px;">+${bonusXP} Bonus XP 💪</p>` : ""}
+            ${bonusXP > 0 ? `<p style="margin: 10px 0; font-size: 16px;">+${bonusXP} Bonus XP 💪</p>` : ''}
           </div>
           
           <p style="color: #666; margin: 20px 0; line-height: 1.6; text-align: center;">
@@ -163,7 +163,7 @@ const templates = {
   /**
    * Subscription expiry reminder
    */
-  subscriptionExpiryEmail: (daysRemaining, planName = "VIP", name = "Student") => ({
+  subscriptionExpiryEmail: (daysRemaining, planName = 'VIP', name = 'Student') => ({
     subject: `⏰ Study Partner - Your ${planName} Plan Expires Soon`,
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
@@ -208,8 +208,8 @@ const templates = {
   /**
    * Welcome email after verification
    */
-  welcomeEmail: (name = "Student") => ({
-    subject: "👋 Welcome to Study Partner - Get Started!",
+  welcomeEmail: (name = 'Student') => ({
+    subject: '👋 Welcome to Study Partner - Get Started!',
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px;">
         <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">

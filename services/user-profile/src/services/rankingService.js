@@ -38,9 +38,7 @@ const DAILY_KP_CAP = Number(process.env.RANK_DAILY_KP_CAP || 600);
 const LOW_DIFFICULTY_REPEAT_THRESHOLD = Number(
   process.env.RANK_LOW_DIFFICULTY_REPEAT_THRESHOLD || 8
 );
-const LOW_DIFFICULTY_WINDOW_MINUTES = Number(
-  process.env.RANK_LOW_DIFFICULTY_WINDOW_MINUTES || 120
-);
+const LOW_DIFFICULTY_WINDOW_MINUTES = Number(process.env.RANK_LOW_DIFFICULTY_WINDOW_MINUTES || 120);
 const COMEBACK_INACTIVITY_HOURS = Number(process.env.RANK_COMEBACK_INACTIVITY_HOURS || 72);
 const COMEBACK_BONUS_SESSIONS = Number(process.env.RANK_COMEBACK_BONUS_SESSIONS || 5);
 
@@ -196,7 +194,8 @@ function updateStreak(profile, now) {
 function refreshComebackWindow(profile, now) {
   if (!profile.lastActivityAt) return;
 
-  const inactivityHours = (now.getTime() - new Date(profile.lastActivityAt).getTime()) / (60 * 60 * 1000);
+  const inactivityHours =
+    (now.getTime() - new Date(profile.lastActivityAt).getTime()) / (60 * 60 * 1000);
   if (inactivityHours >= COMEBACK_INACTIVITY_HOURS && (profile.comebackBonusRemaining || 0) <= 0) {
     profile.comebackBonusRemaining = COMEBACK_BONUS_SESSIONS;
   }
@@ -468,8 +467,7 @@ async function awardKnowledgePoints({ userId, action, metadata = {} }) {
     rankName: profile.rankName,
     metadata,
     reasonBreakdown,
-    contextSessionId:
-      metadata.sessionId || metadata.focusSessionId || metadata.eventId || null,
+    contextSessionId: metadata.sessionId || metadata.focusSessionId || metadata.eventId || null,
     eventKey
   });
 

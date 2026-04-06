@@ -294,46 +294,39 @@ router.post('/schedule/reschedule', tierGate('vip', 'vip_plus', 'trial'), async 
   }
 });
 
-router.post(
-  '/schedule/apply-coach-action',
-  tierGate('vip_plus', 'trial'),
-  async (req, res) => {
-    const { error, value } = applyCoachActionSchema.validate(req.body || {});
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-
-    try {
-      const axios = require('axios');
-      const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-
-      const response = await axios.post(
-        `${AI_SERVICE_URL}/api/ai/scheduler/apply-coach-action`,
-        {
-          user_id: req.user.userId,
-          coach_action: value.coach_action
-        }
-      );
-
-      res.json({
-        message: 'Coach action applied to schedule',
-        result: response.data
-      });
-    } catch (err) {
-      if (err.response) {
-        return res.status(err.response.status).json({
-          error: 'Failed to apply coach action',
-          details: err.response.data.detail || err.message
-        });
-      }
-
-      return res.status(503).json({
-        error: 'AI service unavailable',
-        details: err.message
-      });
-    }
+router.post('/schedule/apply-coach-action', tierGate('vip_plus', 'trial'), async (req, res) => {
+  const { error, value } = applyCoachActionSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
   }
-);
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/scheduler/apply-coach-action`, {
+      user_id: req.user.userId,
+      coach_action: value.coach_action
+    });
+
+    res.json({
+      message: 'Coach action applied to schedule',
+      result: response.data
+    });
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Failed to apply coach action',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
 
 router.get('/schedule/status', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {

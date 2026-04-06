@@ -10,8 +10,8 @@ name: Backend Server CI/CD
 on:
   push:
     branches:
-      - main      # Production deployments
-      - develop   # Staging deployments
+      - main # Production deployments
+      - develop # Staging deployments
   pull_request:
     branches:
       - main
@@ -34,7 +34,7 @@ jobs:
   lint:
     name: 🔍 Lint & Static Analysis
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
     name: 🧪 Unit Tests
     runs-on: ubuntu-latest
     needs: lint
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -121,7 +121,7 @@ jobs:
     name: 🔗 Integration Tests
     runs-on: ubuntu-latest
     needs: lint
-    
+
     services:
       # PostgreSQL database
       postgres:
@@ -216,7 +216,7 @@ jobs:
     name: 🔒 Security Tests
     runs-on: ubuntu-latest
     needs: lint
-    
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -287,10 +287,10 @@ jobs:
     name: 🏗️ Build Application
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    
+
     outputs:
       version: ${{ steps.version.outputs.version }}
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -338,15 +338,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push'
-    
+
     permissions:
       contents: read
       packages: write
-    
+
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build-push.outputs.digest }}
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -407,7 +407,7 @@ jobs:
     environment:
       name: staging
       url: https://api-staging.study-partner.app
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -440,10 +440,10 @@ jobs:
         run: |
           # Update image tag in manifests
           sed -i "s|IMAGE_TAG|${{ needs.containerize.outputs.image-digest }}|g" k8s/staging/*.yml
-          
+
           # Apply manifests
           kubectl apply -f k8s/staging/ -n backend-staging
-          
+
           # Wait for rollout
           kubectl rollout status deployment/study-partner-api -n backend-staging --timeout=300s
 
@@ -464,7 +464,7 @@ jobs:
     environment:
       name: production
       url: https://api.study-partner.app
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -495,10 +495,10 @@ jobs:
         run: |
           # Update image tag
           sed -i "s|IMAGE_TAG|${{ needs.containerize.outputs.image-digest }}|g" k8s/production/*.yml
-          
+
           # Apply with rolling update
           kubectl apply -f k8s/production/ -n backend-production
-          
+
           # Wait for rollout
           kubectl rollout status deployment/study-partner-api -n backend-production --timeout=600s
 
@@ -516,7 +516,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-staging, deploy-production]
     if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -545,7 +545,7 @@ jobs:
           response=$(curl -s -w "\n%{http_code}" ${{ steps.set-url.outputs.url }}/health)
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n-1)
-          
+
           if [ "$http_code" -eq 200 ]; then
             echo "✅ Health check passed"
             echo "$body" | jq .
@@ -559,14 +559,14 @@ jobs:
       - name: ⏱️ Response Time Check
         run: |
           echo "Checking API response times..."
-          
+
           # Check multiple endpoints
           endpoints=(
             "/api/v1/auth/status"
             "/api/v1/tasks"
             "/api/v1/sessions"
           )
-          
+
           for endpoint in "${endpoints[@]}"; do
             response_time=$(curl -o /dev/null -s -w "%{time_total}" \
               -H "Authorization: Bearer ${{ secrets.SMOKE_TEST_TOKEN }}" \
@@ -588,7 +588,7 @@ jobs:
         run: |
           response=$(curl -s ${{ steps.set-url.outputs.url }}/health/db)
           status=$(echo "$response" | jq -r '.status')
-          
+
           if [ "$status" == "ok" ]; then
             echo "✅ Database connectivity check passed"
           else
@@ -602,7 +602,7 @@ jobs:
         run: |
           response=$(curl -s ${{ steps.set-url.outputs.url }}/health/redis)
           status=$(echo "$response" | jq -r '.status')
-          
+
           if [ "$status" == "ok" ]; then
             echo "✅ Redis connectivity check passed"
           else
@@ -618,7 +618,7 @@ jobs:
           auth_response=$(curl -s -X POST ${{ steps.set-url.outputs.url }}/api/v1/auth/validate \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.SMOKE_TEST_TOKEN }}")
-          
+
           if echo "$auth_response" | jq -e '.valid' > /dev/null 2>&1; then
             echo "✅ Auth validation passed"
           else

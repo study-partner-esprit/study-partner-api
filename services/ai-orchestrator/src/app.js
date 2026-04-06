@@ -5,8 +5,7 @@ const {
   securityMiddleware,
   loggingMiddleware,
   errorHandler,
-  rateLimiter,
-  healthCheck
+  rateLimiter
 } = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
 

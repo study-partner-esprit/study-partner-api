@@ -348,7 +348,11 @@ router.put('/coupons/:couponId', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const coupon = await Coupon.findByIdAndUpdate(req.params.couponId, { $set: value }, { new: true });
+    const coupon = await Coupon.findByIdAndUpdate(
+      req.params.couponId,
+      { $set: value },
+      { new: true }
+    );
     if (!coupon) {
       return res.status(404).json({ error: 'Coupon not found' });
     }

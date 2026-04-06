@@ -464,7 +464,6 @@ router.post('/:sessionId/task/complete', async (req, res) => {
 // POST /:sessionId/task/skip — Skip current task
 router.post('/:sessionId/task/skip', async (req, res) => {
   try {
-    const userId = req.user.userId;
     const { sessionId } = req.params;
 
     const session = await StudySession.findOne({ _id: sessionId, status: 'active' });
@@ -529,7 +528,7 @@ router.post('/team', async (req, res) => {
     const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
 
     // Build task list from course if provided
-    let tasks = [];
+    const tasks = [];
     if (courseId) {
       const course = await Course.findOne({ _id: courseId });
       if (course && course.topics) {
