@@ -344,7 +344,7 @@ jobs:
   # STAGE 6: Docker Containerization
   # ===========================================================================
   containerize:
-    name: 🐳 Build Docker Image
+    name: 🐳 Build API Docker Image
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push'
@@ -396,7 +396,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./services/api-gateway/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
