@@ -59,13 +59,15 @@ jest.mock('../models/index', () => ({
     findByIdAndDelete: jest.fn()
   },
   StudySession: {},
-  Task: {},
+  Task: {
+    find: jest.fn()
+  },
   Topic: {},
   Subject: {}
 }));
 
 // Get the mocked models
-const { Course, StudyPlan } = require('../models/index');
+const { Course, StudyPlan, Task } = require('../models/index');
 
 // Build app with routes
 const app = express();
@@ -93,7 +95,9 @@ describe('Study Service', () => {
     describe('GET /api/v1/study/courses', () => {
       it('should return user courses', async () => {
         Course.find.mockReturnValue({
-          sort: jest.fn().mockResolvedValue([mockCourse])
+          sort: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([mockCourse])
+          })
         });
 
         const res = await request(app).get('/api/v1/study/courses');
@@ -133,7 +137,9 @@ describe('Study Service', () => {
     describe('GET /api/v1/study/plans', () => {
       it('should return user study plans', async () => {
         StudyPlan.find.mockReturnValue({
-          sort: jest.fn().mockResolvedValue([mockPlan])
+          sort: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([mockPlan])
+          })
         });
 
         const res = await request(app).get('/api/v1/study/plans');
@@ -143,16 +149,23 @@ describe('Study Service', () => {
 
     describe('GET /api/v1/study/plans/:id', () => {
       it('should return a specific plan', async () => {
-        StudyPlan.findOne.mockResolvedValue(mockPlan);
+        StudyPlan.findOne.mockReturnValue({
+          lean: jest.fn().mockResolvedValue(mockPlan)
+        });
+        Task.find.mockReturnValue({
+          lean: jest.fn().mockResolvedValue([])
+        });
 
-        const res = await request(app).get('/api/v1/study/plans/plan-1');
+        const res = await request(app).get('/api/v1/study/plans/507f1f77bcf86cd799439011');
         expect(res.status).toBe(200);
       });
 
       it('should return 404 for missing plan', async () => {
-        StudyPlan.findOne.mockResolvedValue(null);
+        StudyPlan.findOne.mockReturnValue({
+          lean: jest.fn().mockResolvedValue(null)
+        });
 
-        const res = await request(app).get('/api/v1/study/plans/nonexistent');
+        const res = await request(app).get('/api/v1/study/plans/507f1f77bcf86cd799439012');
         expect(res.status).toBe(404);
       });
     });

@@ -8,8 +8,28 @@
  * - Response structure
  */
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/test_study_partner';
+process.env.NODE_ENV = 'test';
+process.env.AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+// Prevent fail-fast app checks from terminating the Jest worker.
+process.exit = jest.fn();
+
 const request = require('supertest');
 const axios = require('axios');
+
+jest.mock('@study-partner/shared/auth', () => ({
+  authenticate: jest.fn((req, res, next) => {
+    req.user = { userId: 'test-user-123' };
+    next();
+  })
+}));
+
+jest.mock('@study-partner/shared/tierGate', () => ({
+  tierGate: jest.fn(() => (req, res, next) => next())
+}));
+
 const app = require('../app');
 
 // Mock axios to prevent actual HTTP calls
@@ -25,10 +45,13 @@ describe('POST /api/v1/ai/coach', () => {
     // Mock Python service response
     const mockPythonResponse = {
       data: {
-        action_type: 'silence',
-        message: null,
-        reasoning:
-          'User is deeply focused (ML confidence: 0.92). Never interrupt productive flow state.',
+        coach_action: {
+          action_type: 'silence',
+          message: null,
+          reasoning:
+            'User is deeply focused (ML confidence: 0.92). Never interrupt productive flow state.'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };
@@ -41,21 +64,18 @@ describe('POST /api/v1/ai/coach', () => {
       do_not_disturb: false
     });
 
-    // Allow 200 or 401 (auth may fail in test)
-    expect([200, 201, 401]).toContain(response.status);
-    if (response.status === 200 || response.status === 201) {
-      // Verify response structure only if successful
-      expect(response.body).toHaveProperty('message');
-      expect(response.body).toHaveProperty('action_type');
-      expect(response.body).toHaveProperty('reasoning');
-      expect(response.body.action_type).toBe('silence');
-    }
+    expect([200, 201]).toContain(response.status);
+    expect(response.body).toHaveProperty('message');
+    expect(response.body).toHaveProperty('action_type');
+    expect(response.body).toHaveProperty('reasoning');
+    expect(response.body.action_type).toBe('silence');
 
     // Verify axios was called correctly
     expect(axios.post).toHaveBeenCalledTimes(1);
     expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('/api/coach/run'),
+      expect.stringContaining('/api/ai/coach/decision'),
       expect.objectContaining({
+        user_id: 'test-user-123',
         ignored_count: 0,
         do_not_disturb: false
       })
@@ -65,9 +85,12 @@ describe('POST /api/v1/ai/coach', () => {
   it('should handle do_not_disturb flag correctly', async () => {
     const mockPythonResponse = {
       data: {
-        action_type: 'silence',
-        message: null,
-        reasoning: 'Do not disturb is enabled.',
+        coach_action: {
+          action_type: 'silence',
+          message: null,
+          reasoning: 'Do not disturb is enabled.'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };
@@ -96,9 +119,12 @@ describe('POST /api/v1/ai/coach', () => {
   it('should handle ignored_count parameter correctly', async () => {
     const mockPythonResponse = {
       data: {
-        action_type: 'silence',
-        message: null,
-        reasoning: 'Coach was ignored several times. Respecting user preference for autonomy.',
+        coach_action: {
+          action_type: 'silence',
+          message: null,
+          reasoning: 'Coach was ignored several times. Respecting user preference for autonomy.'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };
@@ -191,9 +217,12 @@ describe('POST /api/v1/ai/coach', () => {
     // Mock Python service response with a message
     const mockPythonResponse = {
       data: {
-        action_type: 'suggest_break',
-        message: 'You seem quite tired. How about taking a 10-minute break to recharge?',
-        reasoning: 'High fatigue levels combined with lost focus indicate need for rest.',
+        coach_action: {
+          action_type: 'suggest_break',
+          message: 'You seem quite tired. How about taking a 10-minute break to recharge?',
+          reasoning: 'High fatigue levels combined with lost focus indicate need for rest.'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };
@@ -218,9 +247,12 @@ describe('POST /api/v1/ai/coach', () => {
 
     const mockPythonResponse = {
       data: {
-        action_type: 'silence',
-        message: null,
-        reasoning: 'User is focused',
+        coach_action: {
+          action_type: 'silence',
+          message: null,
+          reasoning: 'User is focused'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };
@@ -245,9 +277,12 @@ describe('POST /api/v1/ai/coach', () => {
 
     const mockPythonResponse = {
       data: {
-        action_type: 'silence',
-        message: null,
-        reasoning: 'User is focused',
+        coach_action: {
+          action_type: 'silence',
+          message: null,
+          reasoning: 'User is focused'
+        },
+        schedule_update: null,
         timestamp: '2026-02-11T10:30:00'
       }
     };

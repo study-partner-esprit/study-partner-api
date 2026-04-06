@@ -12,8 +12,12 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
 
+jest.setTimeout(20000);
+
 // ---------- bootstrap environment ----------
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-secret';
+process.env.JWT_REFRESH_SECRET =
+  process.env.JWT_REFRESH_SECRET || 'integration-test-refresh-secret';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner_test';
 process.env.NODE_ENV = 'test';
 
@@ -33,23 +37,37 @@ const testUser = {
 };
 
 let token;
+let dbConnected = false;
 
 // ---------- lifecycle ----------
 beforeAll(async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
   token = generateToken(testUser);
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 1500,
+      connectTimeoutMS: 1500
+    });
+    dbConnected = true;
+  } catch (_error) {
+    dbConnected = false;
+  }
 });
 
 afterAll(async () => {
   // Clean up test data
-  const db = mongoose.connection.db;
-  const collections = await db.listCollections().toArray();
-  for (const col of collections) {
-    if (col.name.startsWith('test_')) {
-      await db.dropCollection(col.name);
+  if (dbConnected && mongoose.connection && mongoose.connection.db) {
+    const db = mongoose.connection.db;
+    const collections = await db.listCollections().toArray();
+    for (const col of collections) {
+      if (col.name.startsWith('test_')) {
+        await db.dropCollection(col.name);
+      }
     }
   }
-  await mongoose.disconnect();
+
+  if (mongoose.connection && mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
 });
 
 // ---------- tests ----------

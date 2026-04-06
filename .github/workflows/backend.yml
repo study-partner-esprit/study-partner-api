@@ -16,6 +16,12 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Enable deployment to cluster (set to "true" to run deploy jobs)'
+        required: false
+        default: 'false'
 
 # Prevent concurrent deployments
 concurrency:
@@ -403,7 +409,7 @@ jobs:
     name: 🚀 Deploy to Staging
     runs-on: ubuntu-latest
     needs: [containerize, security-tests]
-    if: github.ref == 'refs/heads/develop'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true' && github.ref == 'refs/heads/develop'
     environment:
       name: staging
       url: https://api-staging.study-partner.app
@@ -460,7 +466,7 @@ jobs:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
     needs: [containerize, security-tests]
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true' && github.ref == 'refs/heads/main'
     environment:
       name: production
       url: https://api.study-partner.app

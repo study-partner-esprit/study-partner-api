@@ -56,25 +56,27 @@ app.use('/api/v1/ai/signals', aiRateLimiter);
 app.use('/api/v1/ai', authenticate, aiRoutes);
 
 // Log registered routes for debugging
-console.log('[DEBUG] Registered routes:');
-app._router.stack.forEach((middleware) => {
-  if (middleware.route) {
-    console.log(
-      `  ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`
-    );
-  } else if (middleware.name === 'router') {
-    console.log(`  Router mounted at: ${middleware.regexp}`);
-    if (middleware.handle.stack) {
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          console.log(
-            `    ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`
-          );
-        }
-      });
+if (process.env.NODE_ENV !== 'test') {
+  console.log('[DEBUG] Registered routes:');
+  app._router.stack.forEach((middleware) => {
+    if (middleware.route) {
+      console.log(
+        `  ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`
+      );
+    } else if (middleware.name === 'router') {
+      console.log(`  Router mounted at: ${middleware.regexp}`);
+      if (middleware.handle.stack) {
+        middleware.handle.stack.forEach((handler) => {
+          if (handler.route) {
+            console.log(
+              `    ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`
+            );
+          }
+        });
+      }
     }
-  }
-});
+  });
+}
 
 // Error handler (must be last)
 app.use(errorHandler);
