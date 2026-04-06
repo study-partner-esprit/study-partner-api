@@ -5,7 +5,6 @@ process.env.NODE_ENV = 'test';
 process.env.AI_SERVICE_URL = 'http://localhost:8000';
 
 // Prevent process.exit() from killing tests
-const originalExit = process.exit;
 process.exit = jest.fn();
 
 const axios = require('axios');
