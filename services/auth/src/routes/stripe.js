@@ -34,12 +34,6 @@ function logError(label, err) {
   process.stderr.write(`[stripe] ${label}: ${message}\n`);
 }
 
-function getPriceIdByTier(tier) {
-  if (tier === 'vip') return process.env.STRIPE_PRICE_ID_VIP;
-  if (tier === 'vip_plus') return process.env.STRIPE_PRICE_ID_VIP_PLUS;
-  return null;
-}
-
 function addMonths(baseDate, months) {
   const next = new Date(baseDate);
   next.setMonth(next.getMonth() + months);
