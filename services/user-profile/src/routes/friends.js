@@ -270,7 +270,8 @@ router.put('/request/:friendshipId/accept', async (req, res) => {
     try {
       const USER_PROFILE_URL =
         process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-      for (const _uid of [friendship.requester, friendship.recipient]) {
+      // eslint-disable-next-line no-unused-vars
+      for (const uid of [friendship.requester, friendship.recipient]) {
         await axios.post(
           `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
           {
