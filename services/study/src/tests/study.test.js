@@ -8,6 +8,9 @@ process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
 process.env.NODE_ENV = 'test';
 
+// Prevent process.exit() from killing tests
+process.exit = jest.fn();
+
 // ── Mock Models ──────────────────────────────────
 const mockCourse = {
   _id: 'course-1',
@@ -37,26 +40,32 @@ const mockPlan = {
   save: jest.fn().mockResolvedValue(true)
 };
 
-jest.mock('../models/Course', () => ({
-  find: jest.fn(),
-  findOne: jest.fn(),
-  findById: jest.fn(),
-  create: jest.fn(),
-  findByIdAndUpdate: jest.fn(),
-  findByIdAndDelete: jest.fn()
+jest.mock('../models/index', () => ({
+  Course: {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn(),
+    findOneAndDelete: jest.fn()
+  },
+  StudyPlan: {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn()
+  },
+  StudySession: {},
+  Task: {},
+  Topic: {},
+  Subject: {}
 }));
 
-jest.mock('../models/StudyPlan', () => ({
-  find: jest.fn(),
-  findOne: jest.fn(),
-  findById: jest.fn(),
-  create: jest.fn(),
-  findByIdAndUpdate: jest.fn(),
-  findByIdAndDelete: jest.fn()
-}));
-
-const Course = require('../models/Course');
-const StudyPlan = require('../models/StudyPlan');
+// Get the mocked models
+const { Course, StudyPlan } = require('../models/index');
 
 // Build app with routes
 const app = express();

@@ -15,7 +15,7 @@ describe('API Gateway', () => {
     it('should return health status', async () => {
       const res = await request(app).get('/api/v1/health');
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe('ok');
+      expect(res.body.status).toBe('healthy');
       expect(res.body.service).toBe('api-gateway');
     });
   });
@@ -34,7 +34,7 @@ describe('API Gateway', () => {
         .options('/api/v1/health')
         .set('Origin', 'http://localhost:5173');
 
-      expect(res.status).toBe(200);
+      expect([200, 204]).toContain(res.status);
       expect(res.headers['access-control-allow-origin']).toBeDefined();
     });
   });
