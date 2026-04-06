@@ -1,10 +1,9 @@
-// Set environment variables BEFORE any imports  
+// Set environment variables BEFORE any imports
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
 process.env.NODE_ENV = 'test';
 
 // Prevent process.exit() from killing tests
-const originalExit = process.exit;
 process.exit = jest.fn();
 
 // Mock axios

@@ -36,12 +36,10 @@ describe('POST /api/v1/ai/coach', () => {
     axios.post.mockResolvedValue(mockPythonResponse);
 
     // Make request
-    const response = await request(app)
-      .post('/api/v1/ai/coach')
-      .send({
-        ignored_count: 0,
-        do_not_disturb: false
-      });
+    const response = await request(app).post('/api/v1/ai/coach').send({
+      ignored_count: 0,
+      do_not_disturb: false
+    });
 
     // Allow 200 or 401 (auth may fail in test)
     expect([200, 201, 401]).toContain(response.status);
