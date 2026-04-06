@@ -170,6 +170,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # MongoDB for services using Mongoose
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -188,6 +194,7 @@ jobs:
         run: |
           until pg_isready -h localhost -p 5432; do sleep 1; done
           until pg_isready -h localhost -p 5433; do sleep 1; done
+          until (echo > /dev/tcp/localhost/27017) >/dev/null 2>&1; do sleep 1; done
 
       # Run database migrations
       - name: 🗃️ Run database migrations
@@ -200,6 +207,9 @@ jobs:
         run: npm run test:integration
         env:
           NODE_ENV: test
+          MONGODB_URI: mongodb://localhost:27017/study_partner_test
+          JWT_SECRET: integration-test-secret
+          JWT_REFRESH_SECRET: integration-test-refresh-secret
           # PostgreSQL configuration
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/study_partner_test
           # Vector DB configuration
