@@ -1,25 +1,35 @@
+// Set environment variables BEFORE any imports  
+process.env.JWT_SECRET = 'test-secret-key';
+process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.NODE_ENV = 'test';
+
+// Prevent process.exit() from killing tests
+const originalExit = process.exit;
+process.exit = jest.fn();
+
 // Mock axios
 jest.mock('axios');
 
 // Mock database models
-jest.mock('../models', () => ({
-  UserRankProfile: {
-    findOne: jest.fn(),
-    findByIdAndUpdate: jest.fn(),
-    create: jest.fn()
-  },
-  RankEventLedger: {
-    insertMany: jest.fn(),
-    find: jest.fn()
-  },
-  RankSeason: {
-    findOne: jest.fn(),
-    create: jest.fn()
-  },
-  SeasonResultSnapshot: {
-    findOne: jest.fn(),
-    create: jest.fn()
-  }
+jest.mock('../models/UserRankProfile', () => ({
+  findOne: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
+  create: jest.fn()
+}));
+
+jest.mock('../models/RankEventLedger', () => ({
+  insertMany: jest.fn(),
+  find: jest.fn()
+}));
+
+jest.mock('../models/RankSeason', () => ({
+  findOne: jest.fn(),
+  create: jest.fn()
+}));
+
+jest.mock('../models/SeasonResultSnapshot', () => ({
+  findOne: jest.fn(),
+  create: jest.fn()
 }));
 
 jest.mock('@study-partner/shared/auth', () => ({
@@ -120,17 +130,17 @@ describe('Ranking Service', () => {
   });
 
   describe('Event Ledger', () => {
-    test(
-      'should log ranking events',
-      [
+    test('should log ranking events', () => {
+      const events = [
         { event: 'quest_completed', points: 100 },
         { event: 'task_completed', points: 50 },
         { event: 'study_streak', points: 200 }
-      ].forEach((entry) => {
+      ];
+      events.forEach((entry) => {
         expect(entry).toHaveProperty('event');
         expect(entry).toHaveProperty('points');
-      })
-    );
+      });
+    });
 
     test('should aggregate event points', () => {
       const events = [{ points: 100 }, { points: 50 }, { points: 200 }];

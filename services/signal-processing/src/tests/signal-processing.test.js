@@ -1,24 +1,22 @@
+// Set environment variables BEFORE any imports
+process.env.JWT_SECRET = 'test-secret-key';
+process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.NODE_ENV = 'test';
+process.env.AI_SERVICE_URL = 'http://localhost:8000';
+
+// Prevent process.exit() from killing tests
+const originalExit = process.exit;
+process.exit = jest.fn();
+
 const axios = require('axios');
 
 jest.mock('axios');
 
-jest.mock('../models', () => ({
-  FocusSignal: {
-    create: jest.fn(),
-    find: jest.fn(),
-    findOne: jest.fn(),
-    updateOne: jest.fn()
-  },
-  FatigueSignal: {
-    create: jest.fn(),
-    find: jest.fn(),
-    findOne: jest.fn()
-  },
-  SignalAggregate: {
-    create: jest.fn(),
-    findOne: jest.fn(),
-    updateOne: jest.fn()
-  }
+jest.mock('../models/FocusSession', () => ({
+  create: jest.fn(),
+  find: jest.fn(),
+  findOne: jest.fn(),
+  updateOne: jest.fn()
 }));
 
 jest.mock('@study-partner/shared/auth', () => ({
@@ -50,6 +48,7 @@ describe('Signal Processing Service', () => {
 
   describe('Focus Signals', () => {
     test('should record focus signal', async () => {
+      const FocusSession = require('../models/FocusSession');
       const focusData = {
         userId: 'user-123',
         timestamp: new Date(),
@@ -58,13 +57,12 @@ describe('Signal Processing Service', () => {
         sessionId: 'session-123'
       };
 
-      const { FocusSignal } = require('../models');
-      FocusSignal.create.mockResolvedValue({
+      FocusSession.create.mockResolvedValue({
         _id: 'signal-123',
         ...focusData
       });
 
-      const result = await FocusSignal.create(focusData);
+      const result = await FocusSession.create(focusData);
       expect(result.focusLevel).toBe(8);
       expect(result.userId).toBe('user-123');
     });
@@ -103,6 +101,7 @@ describe('Signal Processing Service', () => {
 
   describe('Fatigue Signals', () => {
     test('should record fatigue signal', async () => {
+      const FocusSession = require('../models/FocusSession');
       const fatigueData = {
         userId: 'user-123',
         timestamp: new Date(),
@@ -110,13 +109,12 @@ describe('Signal Processing Service', () => {
         cause: 'prolonged_study'
       };
 
-      const { FatigueSignal } = require('../models');
-      FatigueSignal.create.mockResolvedValue({
+      FocusSession.create.mockResolvedValue({
         _id: 'fatigue-123',
         ...fatigueData
       });
 
-      const result = await FatigueSignal.create(fatigueData);
+      const result = await FocusSession.create(fatigueData);
       expect(result.fatigueLevel).toBe(7);
     });
 
