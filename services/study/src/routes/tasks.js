@@ -1,7 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
-const { Task, Course } = require('../models');
+const { Task } = require('../models');
 
 const router = express.Router();
 
@@ -161,8 +161,7 @@ router.delete('/:taskId', async (req, res) => {
 // Note: New flow should use /api/v1/study/plans/create instead
 router.post('/generate-from-planner', async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { goal, availableTimeMinutes, courseId, startDate } = req.body;
+    const { goal } = req.body;
 
     if (!goal) {
       return res.status(400).json({ error: 'Goal is required' });

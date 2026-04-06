@@ -357,10 +357,10 @@ router.get('/online-status/batch', async (req, res) => {
             userId: profile.userId,
             onlineStatus: resolvedStatus,
             isOnline: resolvedStatus !== 'offline',
-            lastSeenAt: profile.lastSeenAt || profile.updatedAt || null,
-          },
+            lastSeenAt: profile.lastSeenAt || profile.updatedAt || null
+          }
         ];
-      }),
+      })
     );
 
     const statuses = rawUserIds.map((userId) => {
@@ -369,7 +369,7 @@ router.get('/online-status/batch', async (req, res) => {
           userId,
           onlineStatus: 'offline',
           isOnline: false,
-          lastSeenAt: null,
+          lastSeenAt: null
         }
       );
     });
@@ -774,8 +774,8 @@ router.put('/notification-preferences', async (req, res) => {
     // We'll update the preferences in the response to the frontend
     // In a real implementation, this would update the User model in the auth service
 
-    res.json({ 
-      message: 'Notification preferences updated', 
+    res.json({
+      message: 'Notification preferences updated',
       preferences,
       userId
     });

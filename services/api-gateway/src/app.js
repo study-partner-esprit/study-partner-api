@@ -6,7 +6,6 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck,
   logger
 } = require('@study-partner/shared');
 
@@ -45,7 +44,10 @@ const OPENAPI_SPEC = {
     '/api/v1/ai/coach': { post: { summary: 'Get coach decision' } },
     '/api/v1/ai/evaluator/session': { post: { summary: 'Evaluate completed session' } },
     '/api/v1/analytics/summary': { get: { summary: 'Get analytics summary' } },
-    '/api/v1/notifications': { get: { summary: 'List notifications' }, post: { summary: 'Create notification' } }
+    '/api/v1/notifications': {
+      get: { summary: 'List notifications' },
+      post: { summary: 'Create notification' }
+    }
   }
 };
 
