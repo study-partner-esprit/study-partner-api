@@ -87,10 +87,7 @@ describe('API Integration Tests', () => {
       };
 
       // Sync to profile service
-      await axios.post(
-        'http://user-profile-service:3002/api/v1/users',
-        userData
-      );
+      await axios.post('http://user-profile-service:3002/api/v1/users', userData);
 
       expect(axios.post).toHaveBeenCalled();
     });
@@ -105,10 +102,10 @@ describe('API Integration Tests', () => {
       };
 
       // Notify ranking service
-      await axios.post(
-        'http://user-profile-service:3002/api/v1/users/gamification/award-xp',
-        { action: 'task_completed', metadata: taskCompletion }
-      );
+      await axios.post('http://user-profile-service:3002/api/v1/users/gamification/award-xp', {
+        action: 'task_completed',
+        metadata: taskCompletion
+      });
 
       expect(axios.post).toHaveBeenCalled();
     });
@@ -122,10 +119,7 @@ describe('API Integration Tests', () => {
         recommendedAction: 'take_break'
       };
 
-      await axios.post(
-        'http://localhost:3001/api/v1/notifications',
-        fatigueAlert
-      );
+      await axios.post('http://localhost:3001/api/v1/notifications', fatigueAlert);
 
       expect(axios.post).toHaveBeenCalled();
     });
@@ -201,11 +195,13 @@ describe('API Integration Tests', () => {
     test('should handle multiple concurrent users', async () => {
       axios.post.mockResolvedValue({ status: 200 });
 
-      const userRequests = Array(10).fill().map((_, i) =>
-        axios.post('http://localhost:3001/api/v1/users', {
-          email: `user${i}@example.com`
-        })
-      );
+      const userRequests = Array(10)
+        .fill()
+        .map((_, i) =>
+          axios.post('http://localhost:3001/api/v1/users', {
+            email: `user${i}@example.com`
+          })
+        );
 
       const results = await Promise.all(userRequests);
       expect(results).toHaveLength(10);
@@ -261,10 +257,12 @@ describe('API Integration Tests', () => {
       };
 
       expect(() => validateUser({})).toThrow('Email required');
-      expect(() => validateUser({
-        email: 'test@example.com',
-        password: 'secret'
-      })).toThrow('Name required');
+      expect(() =>
+        validateUser({
+          email: 'test@example.com',
+          password: 'secret'
+        })
+      ).toThrow('Name required');
     });
 
     test('should validate data types', () => {
@@ -289,27 +287,17 @@ describe('API Integration Tests', () => {
         '/api/v1/users/profile'
       ];
 
-      endpoints.forEach(endpoint => {
+      endpoints.forEach((endpoint) => {
         expect(endpoint).toContain('/api/v1/');
       });
     });
 
     test('should follow RESTful conventions', () => {
       const endpoints = {
-        get: [
-          'GET /api/v1/courses',
-          'GET /api/v1/courses/:id'
-        ],
-        post: [
-          'POST /api/v1/courses',
-          'POST /api/v1/study/sessions'
-        ],
-        put: [
-          'PUT /api/v1/courses/:id'
-        ],
-        delete: [
-          'DELETE /api/v1/courses/:id'
-        ]
+        get: ['GET /api/v1/courses', 'GET /api/v1/courses/:id'],
+        post: ['POST /api/v1/courses', 'POST /api/v1/study/sessions'],
+        put: ['PUT /api/v1/courses/:id'],
+        delete: ['DELETE /api/v1/courses/:id']
       };
 
       expect(endpoints.get).toHaveLength(2);
