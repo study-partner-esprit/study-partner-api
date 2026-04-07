@@ -13,15 +13,17 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit for images
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|gif|webp/; // Allowed image extensions
-    const mimetype = file.mimetype && filetypes.test(file.mimetype);
-    const extname =
-      path.extname(file.originalname || '').toLowerCase() &&
-      filetypes.test(path.extname(file.originalname || '').toLowerCase());
-    if (mimetype && extname) {
+    // Check MIME type - allow various formats
+    const mimetypeValid = /^image\/(jpeg|jpg|png|gif|webp)$/i.test(file.mimetype);
+
+    // Check file extension (e.g., ".jpg")
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extValid = /^\.(jpg|jpeg|png|gif|webp)$/.test(ext);
+
+    if (mimetypeValid && extValid) {
       return cb(null, true);
     }
-    cb(new Error('Error: File upload only supports following file.types: ' + filetypes));
+    cb(new Error('File upload only supports JPEG, PNG, GIF, or WebP images'));
   }
 });
 
@@ -29,17 +31,46 @@ const uploadVideo = multer({
   storage: storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for videos
   fileFilter: (req, file, cb) => {
-    const filetypes = /mp4|webm|mov|avi/; // Allowed video extensions
-    const mimetype = file.mimetype && /video\//i.test(file.mimetype);
-    const extname =
-      path.extname(file.originalname || '').toLowerCase() &&
-      filetypes.test(path.extname(file.originalname || '').toLowerCase());
-    if (mimetype && extname) {
+    // Check MIME type (e.g., "video/mp4")
+    const mimetypeValid = /^video\/(mp4|webm|quicktime|x-msvideo)$/i.test(file.mimetype);
+    
+    // Check file extension (e.g., ".mp4")
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extValid = /^\.(mp4|webm|mov|avi)$/.test(ext);
+    
+    if (mimetypeValid && extValid) {
       return cb(null, true);
     }
-    cb(new Error('Error: File upload only supports following video types: ' + filetypes));
+    cb(new Error('File upload only supports MP4, WebM, MOV, or AVI videos'));
   }
 });
+
+// Multer error handler wrapper
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      const maxSize = req.path.includes('animated-background') ? '50MB' : '5MB';
+      return res.status(400).json({ error: `File is too large. Maximum size is ${maxSize}.` });
+    }
+    if (err.code === 'LIMIT_PART_COUNT') {
+      return res.status(400).json({ error: 'Too many parts in upload' });
+    }
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+};
+
+// Factory function to wrap multer middleware with error handling
+const withMulterError = (multerInstance) => {
+  return (req, res, next) => {
+    multerInstance(req, res, (err) => {
+      handleMulterError(err, req, res, next);
+    });
+  };
+};
 
 // Update profile schema (avatar is now optional handling, as it might be handled separately or as string)
 const updateProfileSchema = Joi.object({
@@ -441,8 +472,10 @@ router.post('/background/apply', async (req, res) => {
     const profile = await UserProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
+    const staticEnabled = enabled !== undefined ? enabled : true;
+
     profile.backgroundSettings = {
-      enabled: enabled !== undefined ? enabled : true,
+      enabled: staticEnabled,
       type: type || 'preset',
       imageUrl: imageUrl || profile.backgroundSettings?.imageUrl,
       opacity: opacity !== undefined ? opacity : 0.3,
@@ -451,8 +484,21 @@ router.post('/background/apply', async (req, res) => {
       uploadedAt: type === 'uploaded' ? new Date() : profile.backgroundSettings?.uploadedAt
     };
 
+    // Enforce only one active background mode at a time.
+    if (staticEnabled) {
+      profile.animatedBackgroundSettings = {
+        ...profile.animatedBackgroundSettings,
+        enabled: false,
+        videoUrl: null
+      };
+    }
+
     await profile.save();
-    res.json({ message: 'Background applied', backgroundSettings: profile.backgroundSettings });
+    res.json({
+      message: 'Background applied',
+      backgroundSettings: profile.backgroundSettings,
+      animatedBackgroundSettings: profile.animatedBackgroundSettings
+    });
   } catch (error) {
     console.error('Error applying background:', error);
     res.status(500).json({ error: 'Failed to apply background' });
@@ -460,51 +506,75 @@ router.post('/background/apply', async (req, res) => {
 });
 
 // POST /background/upload — Upload custom wallpaper (Level 10+)
-router.post('/background/upload', upload.single('backgroundImage'), async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const gate = await requireUserLevel(userId, 10);
-    if (!gate.allowed) {
-      return res.status(403).json({
-        error: 'Background customization unlocks at level 10',
-        code: 'LEVEL_REQUIRED',
-        requiredLevel: 10,
-        currentLevel: gate.level
+router.post(
+  '/background/upload',
+  withMulterError(upload.single('backgroundImage')),
+  async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const userId = req.user.userId;
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image file provided' });
+      }
+
+      const gate = await requireUserLevel(userId, 10);
+      if (!gate.allowed) {
+        return res.status(403).json({
+          error: 'Background customization unlocks at level 10',
+          code: 'LEVEL_REQUIRED',
+          requiredLevel: 10,
+          currentLevel: gate.level
+        });
+      }
+
+      const mime = req.file.mimetype || 'application/octet-stream';
+      const b64 = req.file.buffer.toString('base64');
+      const imageUrl = `data:${mime};base64,${b64}`;
+
+      const profile = await UserProfile.findOne({ userId });
+      if (!profile) {
+        return res.status(404).json({ error: 'Profile not found' });
+      }
+
+      profile.backgroundSettings = {
+        ...profile.backgroundSettings,
+        enabled: true,
+        type: 'uploaded',
+        imageUrl,
+        uploadedAt: new Date()
+      };
+
+      // Uploading a static background deactivates animated mode.
+      profile.animatedBackgroundSettings = {
+        ...profile.animatedBackgroundSettings,
+        enabled: false,
+        videoUrl: null
+      };
+
+      await profile.save();
+      res.json({
+        message: 'Background uploaded',
+        backgroundSettings: profile.backgroundSettings,
+        animatedBackgroundSettings: profile.animatedBackgroundSettings
+      });
+    } catch (error) {
+      console.error('[Background Upload] Error:', error.message, error.stack);
+      res.status(500).json({ 
+        error: 'Failed to upload background',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-
-    if (!req.file) return res.status(400).json({ error: 'No image file provided' });
-
-    const mime = req.file.mimetype || 'application/octet-stream';
-    const b64 = req.file.buffer.toString('base64');
-    const imageUrl = `data:${mime};base64,${b64}`;
-
-    const profile = await UserProfile.findOne({ userId });
-    if (!profile) return res.status(404).json({ error: 'Profile not found' });
-
-    profile.backgroundSettings = {
-      ...profile.backgroundSettings,
-      enabled: true,
-      type: 'uploaded',
-      imageUrl,
-      uploadedAt: new Date()
-    };
-
-    await profile.save();
-    res.json({
-      message: 'Background uploaded',
-      backgroundSettings: profile.backgroundSettings
-    });
-  } catch (error) {
-    console.error('Error uploading background:', error);
-    res.status(500).json({ error: 'Failed to upload background' });
   }
-});
+);
 
 // POST /animated-background/upload — Upload custom animated background video (Level 20+)
 router.post(
   '/animated-background/upload',
-  uploadVideo.single('animatedVideo'),
+  withMulterError(uploadVideo.single('animatedVideo')),
   async (req, res) => {
     try {
       const userId = req.user.userId;
@@ -518,14 +588,20 @@ router.post(
         });
       }
 
-      if (!req.file) return res.status(400).json({ error: 'No video file provided' });
+      if (!req.file) {
+        console.warn('[Animated Background Upload] No file provided in request');
+        return res.status(400).json({ error: 'No video file provided' });
+      }
 
       const mime = req.file.mimetype || 'video/mp4';
       const b64 = req.file.buffer.toString('base64');
       const videoUrl = `data:${mime};base64,${b64}`;
 
       const profile = await UserProfile.findOne({ userId });
-      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      if (!profile) {
+        console.warn(`[Animated Background Upload] Profile not found for userId: ${userId}`);
+        return res.status(404).json({ error: 'Profile not found' });
+      }
 
       profile.animatedBackgroundSettings = {
         ...profile.animatedBackgroundSettings,
@@ -535,14 +611,25 @@ router.post(
         uploadedAt: new Date()
       };
 
+      // Uploading an animated background deactivates static mode.
+      profile.backgroundSettings = {
+        ...profile.backgroundSettings,
+        enabled: false,
+        imageUrl: null
+      };
+
       await profile.save();
       res.json({
         message: 'Animated background video uploaded',
-        animatedBackgroundSettings: profile.animatedBackgroundSettings
+        animatedBackgroundSettings: profile.animatedBackgroundSettings,
+        backgroundSettings: profile.backgroundSettings
       });
     } catch (error) {
-      console.error('Error uploading animated background:', error);
-      res.status(500).json({ error: 'Failed to upload animated background' });
+      console.error('[Animated Background Upload] Error:', error.message, error.stack);
+      res.status(500).json({ 
+        error: 'Failed to upload animated background',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 );
@@ -566,8 +653,10 @@ router.post('/animated-background/apply', async (req, res) => {
     const profile = await UserProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
+    const animatedEnabled = enabled !== undefined ? enabled : true;
+
     profile.animatedBackgroundSettings = {
-      enabled: enabled !== undefined ? enabled : true,
+      enabled: animatedEnabled,
       type: type || 'preset',
       videoUrl: videoUrl || profile.animatedBackgroundSettings?.videoUrl,
       opacity: opacity !== undefined ? opacity : 0.15,
@@ -578,10 +667,20 @@ router.post('/animated-background/apply', async (req, res) => {
       uploadedAt: type === 'uploaded' ? new Date() : profile.animatedBackgroundSettings?.uploadedAt
     };
 
+    // Enforce only one active background mode at a time.
+    if (animatedEnabled) {
+      profile.backgroundSettings = {
+        ...profile.backgroundSettings,
+        enabled: false,
+        imageUrl: null
+      };
+    }
+
     await profile.save();
     res.json({
       message: 'Animated background applied',
-      animatedBackgroundSettings: profile.animatedBackgroundSettings
+      animatedBackgroundSettings: profile.animatedBackgroundSettings,
+      backgroundSettings: profile.backgroundSettings
     });
   } catch (error) {
     console.error('Error applying animated background:', error);
