@@ -21,7 +21,7 @@ class AbilityExecutor {
           payload.baseXP ||
           (payload.triggerContext && payload.triggerContext.baseXp) ||
           (payload.triggerContext && payload.triggerContext.baseXP) ||
-          0,
+          0
       };
     }
 
@@ -30,7 +30,7 @@ class AbilityExecutor {
       characterId: arg2,
       abilityId: null,
       sessionData: arg3 || {},
-      baseXp: arg4 || 0,
+      baseXp: arg4 || 0
     };
   }
 
@@ -45,10 +45,7 @@ class AbilityExecutor {
 
       // Check: User has character assigned
       const userCharacter = await characterManager.getUserCharacter(userId);
-      if (
-        userCharacter.character_id._id.toString() !==
-        characterId.toString()
-      ) {
+      if (userCharacter.character_id._id.toString() !== characterId.toString()) {
         flags.push('character_mismatch');
         return { isValid: false, flags };
       }
@@ -64,9 +61,9 @@ class AbilityExecutor {
         user_id: userId,
         character_id: characterId,
         created_at: {
-          $gt: new Date(Date.now() - 60000), // Last 60 seconds
+          $gt: new Date(Date.now() - 60000) // Last 60 seconds
         },
-        applied: true,
+        applied: true
       });
 
       if (recentEvent) {
@@ -80,8 +77,8 @@ class AbilityExecutor {
         character_id: characterId,
         applied: true,
         created_at: {
-          $gt: new Date(Date.now() - 86400000), // Last 24 hours
-        },
+          $gt: new Date(Date.now() - 86400000) // Last 24 hours
+        }
       });
 
       if (sessionsIn24h > 3) {
@@ -99,15 +96,9 @@ class AbilityExecutor {
    * Compute ability effect value
    * Applies multipliers, caps, and diminishing returns
    */
-  async computeEffect(
-    userId,
-    characterId,
-    baseXp,
-    ability,
-    existingMultipliers = 1.0
-  ) {
+  async computeEffect(userId, characterId, baseXp, ability, existingMultipliers = 1.0) {
     try {
-      let effectValue = ability.effect_value;
+      const effectValue = ability.effect_value;
 
       // Handle different effect types
       let multiplier = 1.0;
@@ -158,8 +149,8 @@ class AbilityExecutor {
         character_id: characterId,
         applied: true,
         created_at: {
-          $gt: new Date(Date.now() - 86400000),
-        },
+          $gt: new Date(Date.now() - 86400000)
+        }
       });
 
       let diminishingReturnsPenalty = 1.0;
@@ -188,8 +179,8 @@ class AbilityExecutor {
           applicableMultiplier: multiplier,
           hardCapApplied: finalMultiplier !== multiplier,
           diminishingReturnsApplied: diminishingReturnsPenalty < 1.0,
-          sessionsIn24h,
-        },
+          sessionsIn24h
+        }
       };
     } catch (error) {
       logger.error('Error computing effect:', error);
@@ -210,14 +201,12 @@ class AbilityExecutor {
       const masteryBonus = computedEffect.debugInfo.sessionsIn24h > 2 ? 2 : 1;
       await characterManager.incrementMastery(userId, masteryBonus);
 
-      logger.info(
-        `Applied ability effect: +${xpGain} XP to user ${userId}, session ${sessionId}`
-      );
+      logger.info(`Applied ability effect: +${xpGain} XP to user ${userId}, session ${sessionId}`);
 
       return {
         xpGain,
         masteryBonus,
-        success: true,
+        success: true
       };
     } catch (error) {
       logger.error('Error applying result:', error);
@@ -247,7 +236,7 @@ class AbilityExecutor {
         effect_value: computedEffect?.finalXp || 0,
         anti_abuse_flags: flags,
         validated: triggerResult.isValid,
-        applied: triggerResult.isValid,
+        applied: triggerResult.isValid
       });
 
       await event.save();
@@ -272,9 +261,7 @@ class AbilityExecutor {
       const normalizedSessionData = {
         ...sessionData,
         session_id:
-          sessionData.session_id ||
-          sessionData.sessionId ||
-          `character-session-${Date.now()}`,
+          sessionData.session_id || sessionData.sessionId || `character-session-${Date.now()}`
       };
 
       // Step 1: Get character and ability info
@@ -284,11 +271,7 @@ class AbilityExecutor {
       );
 
       // Step 2: Validate trigger
-      const triggerResult = await this.validateTrigger(
-        userId,
-        characterId,
-        normalizedSessionData
-      );
+      const triggerResult = await this.validateTrigger(userId, characterId, normalizedSessionData);
 
       if (!triggerResult.isValid) {
         // Log failed event
@@ -312,17 +295,12 @@ class AbilityExecutor {
           xpGain: baseXp,
           xpBonus: 0,
           reason: triggerResult.flags.join(', '),
-          flags: triggerResult.flags,
+          flags: triggerResult.flags
         };
       }
 
       // Step 3: Compute effect
-      const computedEffect = await this.computeEffect(
-        userId,
-        characterId,
-        baseXp,
-        ability
-      );
+      const computedEffect = await this.computeEffect(userId, characterId, baseXp, ability);
 
       // Step 4: Apply result
       const applyResult = await this.applyResult(
@@ -357,7 +335,7 @@ class AbilityExecutor {
         xpGain: normalizedXpGain,
         xpBonus,
         masteryBonus: applyResult.masteryBonus,
-        debugInfo: computedEffect.debugInfo,
+        debugInfo: computedEffect.debugInfo
       };
     } catch (error) {
       logger.error('Error executing ability:', error);
@@ -394,10 +372,10 @@ class AbilityExecutor {
           $group: {
             _id: '$ability_id',
             count: { $sum: 1 },
-            totalXp: { $sum: '$effect_value' },
-          },
+            totalXp: { $sum: '$effect_value' }
+          }
         },
-        { $sort: { count: -1 } },
+        { $sort: { count: -1 } }
       ]);
 
       return stats;

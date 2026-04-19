@@ -114,10 +114,12 @@ async function main() {
     const result = await backfill({ dryRun });
     const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(2);
 
+    // eslint-disable-next-line no-console
     console.log(
       `[Backfill] completed. scanned=${result.scanned}, changed=${result.changed}, dryRun=${result.dryRun}, elapsed=${elapsedSeconds}s`
     );
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('[Backfill] failed:', error.message);
     process.exitCode = 1;
   } finally {

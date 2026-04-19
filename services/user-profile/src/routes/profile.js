@@ -33,11 +33,11 @@ const uploadVideo = multer({
   fileFilter: (req, file, cb) => {
     // Check MIME type (e.g., "video/mp4")
     const mimetypeValid = /^video\/(mp4|webm|quicktime|x-msvideo)$/i.test(file.mimetype);
-    
+
     // Check file extension (e.g., ".mp4")
     const ext = path.extname(file.originalname || '').toLowerCase();
     const extValid = /^\.(mp4|webm|mov|avi)$/.test(ext);
-    
+
     if (mimetypeValid && extValid) {
       return cb(null, true);
     }
@@ -563,7 +563,7 @@ router.post(
       });
     } catch (error) {
       console.error('[Background Upload] Error:', error.message, error.stack);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to upload background',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
@@ -626,7 +626,7 @@ router.post(
       });
     } catch (error) {
       console.error('[Animated Background Upload] Error:', error.message, error.stack);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to upload animated background',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });

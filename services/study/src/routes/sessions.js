@@ -1119,7 +1119,15 @@ const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notific
 router.post('/team', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { taskId, topicId, courseId, studyPlanId, mode, maxParticipants, selectedCharacterId = null } = req.body;
+    const {
+      taskId,
+      topicId,
+      courseId,
+      studyPlanId,
+      mode,
+      maxParticipants,
+      selectedCharacterId = null
+    } = req.body;
 
     const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
 
@@ -1489,7 +1497,8 @@ router.get('/team/:sessionId/participants', async (req, res) => {
             participantUserId,
             req.headers.authorization
           );
-          const userCharacter = await getSelectedCharacterForAuthorization(participantAuthorization);
+          const userCharacter =
+            await getSelectedCharacterForAuthorization(participantAuthorization);
           return [String(participantUserId), toParticipantCharacterSummary(userCharacter)];
         })
       );

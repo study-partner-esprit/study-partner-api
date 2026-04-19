@@ -215,7 +215,7 @@ describe('Challenge Session Routes Integration', () => {
     expect(unlockSyncCall[1]).toEqual(
       expect.objectContaining({
         metrics: expect.objectContaining({
-        challengesCompleted: 8
+          challengesCompleted: 8
         })
       })
     );
