@@ -23,15 +23,8 @@ const RANK_LADDER = [
   { index: 15, tier: 'Master', division: 'III', name: 'Master III', minKp: 2400 },
   { index: 16, tier: 'Master', division: 'II', name: 'Master II', minKp: 2600 },
   { index: 17, tier: 'Master', division: 'I', name: 'Master I', minKp: 2800 },
-  {
-    index: 18,
-    tier: 'Grandmaster',
-    division: 'II',
-    name: 'Grandmaster II',
-    minKp: 3000
-  },
-  { index: 19, tier: 'Grandmaster', division: 'I', name: 'Grandmaster I', minKp: 3250 },
-  { index: 20, tier: 'Legend', division: null, name: 'Legend', minKp: 3500 }
+  { index: 18, tier: 'Grandmaster', division: null, name: 'Grandmaster', minKp: 3000 },
+  { index: 19, tier: 'Legend', division: null, name: 'Legend', minKp: 3500 }
 ];
 
 const LOW_BRACKET_MAX_INDEX = 8; // Scholar I and below

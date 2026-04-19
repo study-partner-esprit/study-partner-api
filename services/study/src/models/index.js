@@ -27,6 +27,15 @@ const studySessionSchema = new mongoose.Schema(
       enum: ['focus', 'pomodoro', 'exam'],
       default: 'focus'
     },
+    challengeDifficulty: {
+      type: String,
+      enum: ['easy', 'medium', 'hard', 'expert'],
+      default: 'medium'
+    },
+    selectedCharacterId: {
+      type: String,
+      index: true
+    },
     // Task-by-task progression
     taskProgress: {
       currentTaskIndex: { type: Number, default: 0 },

@@ -191,6 +191,14 @@ const gamificationSchema = new mongoose.Schema(
       teamSessions: {
         type: Number,
         default: 0
+      },
+      groupSessions: {
+        type: Number,
+        default: 0
+      },
+      challengesCompleted: {
+        type: Number,
+        default: 0
       }
     }
   },

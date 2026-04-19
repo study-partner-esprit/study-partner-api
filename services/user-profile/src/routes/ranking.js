@@ -4,6 +4,7 @@ const {
   getOrCreateActiveSeason,
   getRankProfile,
   getRankProgress,
+  getAllRankBadges,
   getRankHistory,
   getRankLeaderboard,
   getSessionResult,
@@ -85,7 +86,7 @@ router.get('/seasons/current', async (req, res) => {
 router.get('/profile', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { season, profile, progress } = await getRankProfile(userId);
+    const { season, profile, progress, rankBadge } = await getRankProfile(userId);
 
     return res.json({
       season: {
@@ -98,7 +99,8 @@ router.get('/profile', async (req, res) => {
         endAt: season.endAt
       },
       profile: toProfilePayload(profile),
-      progress
+      progress,
+      rankBadge
     });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch rank profile' });
@@ -108,7 +110,7 @@ router.get('/profile', async (req, res) => {
 router.get('/progress', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { season, profile, progress } = await getRankProgress(userId);
+    const { season, profile, progress, rankBadge } = await getRankProgress(userId);
 
     return res.json({
       season: {
@@ -119,10 +121,20 @@ router.get('/progress', async (req, res) => {
         status: season.status
       },
       profile: toProfilePayload(profile),
-      progress
+      progress,
+      rankBadge
     });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch rank progress' });
+  }
+});
+
+router.get('/badges', async (req, res) => {
+  try {
+    const badges = await getAllRankBadges();
+    return res.json({ badges });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch rank badges' });
   }
 });
 

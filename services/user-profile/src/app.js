@@ -5,6 +5,7 @@ const gamificationRoutes = require('./routes/gamification');
 const rankingRoutes = require('./routes/ranking');
 const questRoutes = require('./routes/quests');
 const friendRoutes = require('./routes/friends');
+const characterRoutes = require('./character/routes');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -74,6 +75,9 @@ app.use('/api/v1/users/quests', authenticate, questRoutes);
 
 // Protected friend routes (require authentication)
 app.use('/api/v1/users/friends', authenticate, friendRoutes);
+
+// Character routes are hosted in user-profile to keep user progression state cohesive.
+app.use('/api/v1', characterRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

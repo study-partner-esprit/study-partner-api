@@ -138,6 +138,46 @@ app.use(
   })
 );
 app.use(
+  '/api/v1/characters',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: USER_PROFILE_SERVICE_URL,
+    pathRewrite: { '^/api/v1/characters': '/api/v1/characters' }
+  })
+);
+app.use(
+  '/api/v1/user',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: USER_PROFILE_SERVICE_URL,
+    pathRewrite: { '^/api/v1/user': '/api/v1/user' }
+  })
+);
+app.use(
+  '/api/v1/abilities',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: USER_PROFILE_SERVICE_URL,
+    pathRewrite: { '^/api/v1/abilities': '/api/v1/abilities' }
+  })
+);
+app.use(
+  '/api/v1/admin/characters',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: USER_PROFILE_SERVICE_URL,
+    pathRewrite: { '^/api/v1/admin/characters': '/api/v1/admin/characters' }
+  })
+);
+app.use(
+  '/api/v1/admin/abilities',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: USER_PROFILE_SERVICE_URL,
+    pathRewrite: { '^/api/v1/admin/abilities': '/api/v1/admin/abilities' }
+  })
+);
+app.use(
   '/api/v1/ai',
   createProxyMiddleware({
     ...proxyOptions,

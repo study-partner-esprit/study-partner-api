@@ -2,9 +2,11 @@ const RankSeason = require('../models/RankSeason');
 const UserRankProfile = require('../models/UserRankProfile');
 const RankEventLedger = require('../models/RankEventLedger');
 const SeasonResultSnapshot = require('../models/SeasonResultSnapshot');
+const RankBadge = require('../models/RankBadge');
 const Friendship = require('../models/Friendship');
 const UserProfile = require('../models/UserProfile');
 const {
+  RANK_LADDER,
   DEFAULT_SEASON_FLOOR_INDEX,
   getRankByIndex,
   isLowBracket
@@ -16,6 +18,8 @@ const BASE_KP_MAP = {
   task_complete_medium: 40,
   task_complete_hard: 70,
   session_complete: 30,
+  challenge_complete: 60,
+  challenge_completed: 60,
   perfect_focus_session: 20,
   // Legacy events retained for compatibility.
   subject_create: 20,
@@ -42,7 +46,20 @@ const LOW_DIFFICULTY_WINDOW_MINUTES = Number(process.env.RANK_LOW_DIFFICULTY_WIN
 const COMEBACK_INACTIVITY_HOURS = Number(process.env.RANK_COMEBACK_INACTIVITY_HOURS || 72);
 const COMEBACK_BONUS_SESSIONS = Number(process.env.RANK_COMEBACK_BONUS_SESSIONS || 5);
 
-const SESSION_ACTIONS = new Set(['session_complete', 'team_session', 'team_session_host']);
+const SINGLE_BADGE_TIERS = new Set(['grandmaster', 'legend']);
+const DIVISION_TO_BADGE_KEY = {
+  III: 'first',
+  II: 'second',
+  I: 'third'
+};
+
+const SESSION_ACTIONS = new Set([
+  'session_complete',
+  'challenge_complete',
+  'challenge_completed',
+  'team_session',
+  'team_session_host'
+]);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -163,6 +180,74 @@ function buildRankProgress(profile) {
     kpToNextRank: Math.max(0, nextRank.minKp - currentPoints),
     progressPercent
   };
+}
+
+function getBadgeKeyForRank(rank) {
+  const tier = String(rank?.tier || '').toLowerCase();
+  if (SINGLE_BADGE_TIERS.has(tier)) {
+    return 'use';
+  }
+
+  return DIVISION_TO_BADGE_KEY[String(rank?.division || '').toUpperCase()] || 'use';
+}
+
+function buildFallbackRankBadge(rankIndex) {
+  const rank = getRankByIndex(rankIndex || 0);
+  const tier = String(rank?.tier || 'novice').toLowerCase();
+  const badgeKey = getBadgeKeyForRank(rank);
+
+  return {
+    rankIndex: rank.index,
+    rankName: rank.name,
+    tier,
+    division: rank.division || null,
+    badgeKey,
+    imagePath: `/ranking-badges/${tier}/${badgeKey}.png`
+  };
+}
+
+async function getRankBadge(rankIndex) {
+  const fallback = buildFallbackRankBadge(rankIndex);
+
+  try {
+    const badge = await RankBadge.findOne({
+      rankIndex: fallback.rankIndex,
+      isActive: true
+    }).lean();
+
+    if (!badge) return fallback;
+
+    return {
+      rankIndex: badge.rankIndex,
+      rankName: badge.rankName,
+      tier: badge.tier,
+      division: badge.division || null,
+      badgeKey: badge.badgeKey,
+      imagePath: badge.imagePath
+    };
+  } catch (error) {
+    return fallback;
+  }
+}
+
+async function getAllRankBadges() {
+  try {
+    const badges = await RankBadge.find({ isActive: true }).sort({ rankIndex: 1 }).lean();
+    if (badges.length > 0) {
+      return badges.map((badge) => ({
+        rankIndex: badge.rankIndex,
+        rankName: badge.rankName,
+        tier: badge.tier,
+        division: badge.division || null,
+        badgeKey: badge.badgeKey,
+        imagePath: badge.imagePath
+      }));
+    }
+  } catch (error) {
+    // Ignore and return fallback ladder mapping.
+  }
+
+  return RANK_LADDER.map((rank) => buildFallbackRankBadge(rank.index));
 }
 
 function updateStreak(profile, now) {
@@ -497,12 +582,13 @@ async function getRankProfile(userId) {
   const season = await getOrCreateActiveSeason();
   const profile = await ensureUserRankProfile(userId, season._id);
   const progress = buildRankProgress(profile);
-  return { season, profile, progress };
+  const rankBadge = await getRankBadge(profile.rankIndex);
+  return { season, profile, progress, rankBadge };
 }
 
 async function getRankProgress(userId) {
-  const { season, profile, progress } = await getRankProfile(userId);
-  return { season, profile, progress };
+  const { season, profile, progress, rankBadge } = await getRankProfile(userId);
+  return { season, profile, progress, rankBadge };
 }
 
 async function getRankHistory(userId, limit = 20) {
@@ -839,6 +925,7 @@ module.exports = {
   awardKnowledgePoints,
   getRankProfile,
   getRankProgress,
+  getAllRankBadges,
   getRankHistory,
   getRankLeaderboard,
   getSessionResult,
