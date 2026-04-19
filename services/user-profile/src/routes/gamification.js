@@ -10,6 +10,30 @@ const router = express.Router();
 const NOTIFICATION_SERVICE_URL =
   process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
 
+const isChallengeCompletionAction = (action = '') => {
+  const normalizedAction = String(action || '')
+    .trim()
+    .toLowerCase();
+  if (!normalizedAction) return false;
+
+  // Guard against counting failed/abandoned challenge attempts.
+  if (
+    normalizedAction.includes('fail') ||
+    normalizedAction.includes('failed') ||
+    normalizedAction.includes('abandon') ||
+    normalizedAction.includes('cancel')
+  ) {
+    return false;
+  }
+
+  return (
+    normalizedAction === 'challenge_complete' ||
+    normalizedAction === 'challenge_completed' ||
+    normalizedAction.startsWith('challenge_') ||
+    normalizedAction.endsWith('_challenge')
+  );
+};
+
 // XP rewards configuration
 const XP_REWARDS = {
   subject_create: 25,
@@ -20,6 +44,8 @@ const XP_REWARDS = {
   perfect_focus_session: 25,
   daily_streak: 15,
   session_complete: 10,
+  challenge_complete: 30,
+  challenge_completed: 30,
   // Social XP
   friend_added: 5,
   team_session: 20,
@@ -94,12 +120,15 @@ router.post('/award-xp', async (req, res) => {
       profile.stats.coursesUploaded += 1;
     } else if (value.action.startsWith('task_complete')) {
       profile.stats.tasksCompleted += 1;
+    } else if (isChallengeCompletionAction(value.action)) {
+      profile.stats.challengesCompleted = (profile.stats.challengesCompleted || 0) + 1;
     } else if (value.action === 'perfect_focus_session') {
       profile.stats.perfectSessions += 1;
     } else if (value.action === 'friend_added') {
       profile.stats.friendsAdded = (profile.stats.friendsAdded || 0) + 1;
     } else if (value.action === 'team_session' || value.action === 'team_session_host') {
       profile.stats.teamSessions = (profile.stats.teamSessions || 0) + 1;
+      profile.stats.groupSessions = (profile.stats.groupSessions || 0) + 1;
     }
 
     await profile.save();

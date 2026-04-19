@@ -1,14 +1,497 @@
 const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
+const mongoose = require('mongoose');
+const { generateToken } = require('@study-partner/shared/auth');
 const { StudySession } = require('../models');
 
 const router = express.Router();
+
+const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+const BASE_SESSION_COMPLETE_XP = Number(process.env.BASE_SESSION_COMPLETE_XP || 10);
+const BASE_CHALLENGE_COMPLETE_XP = Number(process.env.BASE_CHALLENGE_COMPLETE_XP || 30);
+const BASE_TEAM_SESSION_XP = Number(process.env.BASE_TEAM_SESSION_XP || 20);
+const BASE_TEAM_HOST_XP = Number(process.env.BASE_TEAM_HOST_XP || 30);
+const CHALLENGE_DIFFICULTY_MULTIPLIER = {
+  easy: 1,
+  medium: 1.5,
+  hard: 2,
+  expert: 2.5
+};
+
+const toSafeInteger = (value, fallback = 0) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.trunc(Number(fallback) || 0));
+  return Math.max(0, Math.trunc(numeric));
+};
+
+const countXpHistoryActions = (xpHistory = [], predicate) => {
+  if (!Array.isArray(xpHistory)) return 0;
+  return xpHistory.reduce((count, entry) => {
+    const action = String(entry?.action || '');
+    return predicate(action) ? count + 1 : count;
+  }, 0);
+};
+
+const buildUnlockMetricsFromAward = ({ awardData = {}, gamificationProfile = null } = {}) => {
+  const stats = gamificationProfile?.stats || {};
+  const xpHistory = gamificationProfile?.xp_history || [];
+
+  const challengeCountFromHistory = countXpHistoryActions(xpHistory, (action) =>
+    action.toLowerCase().includes('challenge')
+  );
+
+  const groupCountFromHistory = countXpHistoryActions(xpHistory, (action) =>
+    /^team_session(_host)?$/i.test(action)
+  );
+
+  return {
+    totalXp: Number(awardData.total_xp ?? gamificationProfile?.total_xp),
+    currentStreak: Number(awardData.current_streak),
+    rankIndex: Number(awardData.rank_index),
+    rankName: awardData.rank_name,
+    challengesCompleted: toSafeInteger(
+      stats.challengesCompleted ??
+        stats.challenges_completed ??
+        stats.challengeCount ??
+        challengeCountFromHistory,
+      challengeCountFromHistory
+    ),
+    groupSessions: toSafeInteger(
+      stats.groupSessions ??
+        stats.group_sessions ??
+        stats.teamSessions ??
+        stats.team_sessions ??
+        groupCountFromHistory,
+      groupCountFromHistory
+    )
+  };
+};
+
+const fetchGamificationProfile = async (authorization) => {
+  if (!authorization) return null;
+
+  try {
+    const response = await axios.get(`${USER_PROFILE_URL}/api/v1/users/gamification`, {
+      headers: { Authorization: authorization }
+    });
+
+    return response?.data || null;
+  } catch (error) {
+    console.warn('[Gamification] Profile lookup failed:', error.message);
+    return null;
+  }
+};
+
+const buildDelegatedAuthorizationHeader = (targetUserId, fallbackAuthorization) => {
+  if (!targetUserId) return fallbackAuthorization;
+
+  try {
+    const delegatedToken = generateToken({
+      userId: String(targetUserId),
+      role: 'student',
+      delegatedBy: 'study-service'
+    });
+
+    return `Bearer ${delegatedToken}`;
+  } catch (error) {
+    console.warn('[Team Session] Delegated token generation failed:', error.message);
+    return fallbackAuthorization;
+  }
+};
+
+const getSelectedCharacterForAuthorization = async (authorization) => {
+  if (!authorization) return null;
+
+  try {
+    const response = await axios.get(`${USER_PROFILE_URL}/api/v1/user/character`, {
+      headers: { Authorization: authorization }
+    });
+
+    return response?.data?.data || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const buildAbilityBonusPayload = (abilityResult) => {
+  if (!abilityResult) return [];
+
+  return [
+    {
+      abilityId: abilityResult.abilityId,
+      abilityName: abilityResult.abilityName,
+      effectType: abilityResult.effectType,
+      bonus: toSafeInteger(abilityResult.xpBonus, 0),
+      multiplier: Number(abilityResult.multiplier || 1),
+      debugInfo: abilityResult.debugInfo || null
+    }
+  ];
+};
+
+const executeCharacterAbilityForReward = async ({
+  authorization,
+  characterId,
+  sessionData,
+  baseXP
+}) => {
+  if (!authorization || !characterId) return null;
+
+  try {
+    const response = await axios.post(
+      `${USER_PROFILE_URL}/api/v1/abilities/trigger`,
+      {
+        characterId,
+        sessionData,
+        baseXp: baseXP
+      },
+      {
+        headers: { Authorization: authorization }
+      }
+    );
+
+    return response?.data?.data || null;
+  } catch (error) {
+    console.warn('[Character API] Ability trigger failed:', error.message);
+    return null;
+  }
+};
+
+const calculateCharacterAdjustedXP = async ({
+  authorization,
+  baseXP,
+  sessionData,
+  selectedCharacterId = null,
+  fallbackMultiplier = 1
+}) => {
+  const normalizedBaseXP = toSafeInteger(baseXP, 0);
+  const selectedCharacter = await getSelectedCharacterForAuthorization(authorization);
+  const activeCharacterId =
+    selectedCharacter?.character_id?._id || selectedCharacter?.character_id || null;
+  const characterId = selectedCharacterId || activeCharacterId;
+
+  if (!characterId) {
+    return {
+      baseXP: normalizedBaseXP,
+      totalXP: normalizedBaseXP,
+      multiplier: fallbackMultiplier,
+      abilityBonuses: []
+    };
+  }
+
+  const abilityResult = await executeCharacterAbilityForReward({
+    authorization,
+    characterId: String(characterId),
+    sessionData,
+    baseXP: normalizedBaseXP
+  });
+
+  if (!abilityResult?.success || !abilityResult?.applied) {
+    return {
+      baseXP: normalizedBaseXP,
+      totalXP: normalizedBaseXP,
+      multiplier: fallbackMultiplier,
+      abilityBonuses: []
+    };
+  }
+
+  const totalXP = toSafeInteger(abilityResult.xpGain, normalizedBaseXP);
+  const multiplier =
+    normalizedBaseXP > 0
+      ? Number((totalXP / normalizedBaseXP).toFixed(4))
+      : Number(abilityResult.multiplier || fallbackMultiplier || 1);
+
+  return {
+    baseXP: normalizedBaseXP,
+    totalXP,
+    multiplier,
+    abilityBonuses: buildAbilityBonusPayload(abilityResult)
+  };
+};
+
+const calculateSessionXPWithCharacter = async ({
+  authorization,
+  sessionId,
+  sessionType,
+  duration,
+  courseId,
+  selectedCharacterId,
+  baseXP
+}) => {
+  return calculateCharacterAdjustedXP({
+    authorization,
+    baseXP,
+    selectedCharacterId,
+    sessionData: {
+      session_id: sessionId,
+      session_type: sessionType,
+      duration,
+      course_id: courseId,
+      flagged: false
+    },
+    fallbackMultiplier: 1
+  });
+};
+
+const calculateChallengeXPWithCharacter = async ({
+  authorization,
+  sessionId,
+  challengeId,
+  difficulty,
+  selectedCharacterId,
+  baseXP
+}) => {
+  const normalizedDifficulty = String(difficulty || 'medium').toLowerCase();
+  const difficultyMultiplier = CHALLENGE_DIFFICULTY_MULTIPLIER[normalizedDifficulty] || 1;
+  const adjustedBaseXP = toSafeInteger(baseXP * difficultyMultiplier, baseXP);
+
+  return calculateCharacterAdjustedXP({
+    authorization,
+    baseXP: adjustedBaseXP,
+    selectedCharacterId,
+    sessionData: {
+      session_id: sessionId,
+      session_type: 'challenge',
+      challenge_id: challengeId,
+      difficulty: normalizedDifficulty,
+      flagged: false
+    },
+    fallbackMultiplier: difficultyMultiplier
+  });
+};
+
+const calculateSocialXPWithCharacter = async ({
+  authorization,
+  sessionId,
+  activityType,
+  baseXP
+}) => {
+  return calculateCharacterAdjustedXP({
+    authorization,
+    baseXP,
+    sessionData: {
+      session_id: sessionId,
+      session_type: 'social',
+      activity_type: activityType,
+      flagged: false
+    },
+    fallbackMultiplier: 1
+  });
+};
+
+const syncUnlockProgressFromMetrics = async ({ authorization, metrics }) => {
+  if (!authorization) return null;
+
+  try {
+    const response = await axios.post(
+      `${USER_PROFILE_URL}/api/v1/user/unlock-progress/sync`,
+      { metrics: metrics || {} },
+      {
+        headers: { Authorization: authorization }
+      }
+    );
+
+    return response?.data?.data || null;
+  } catch (error) {
+    console.warn('[Character API] Unlock progress sync failed:', error.message);
+    return null;
+  }
+};
+
+const toParticipantCharacterSummary = (userCharacter) => {
+  const character = userCharacter?.character_id;
+
+  if (!character) return null;
+
+  return {
+    id: character._id,
+    name: character.name,
+    rarity: character.rarity,
+    icon: character.icon || null
+  };
+};
+
+const getSessionCompletionContext = (session) => {
+  const sessionMode = String(session?.mode || '').toLowerCase();
+  const sessionType = String(session?.type || '').toLowerCase();
+  const isChallenge = sessionMode === 'exam' || sessionType === 'challenge';
+
+  if (!isChallenge) {
+    return {
+      isChallenge,
+      action: 'session_complete',
+      baseXP: BASE_SESSION_COMPLETE_XP,
+      sessionType: 'study',
+      challengeId: null,
+      difficulty: null
+    };
+  }
+
+  return {
+    isChallenge,
+    action: 'challenge_complete',
+    baseXP: BASE_CHALLENGE_COMPLETE_XP,
+    sessionType: 'challenge',
+    challengeId: String(session?.taskId || session?._id || ''),
+    difficulty: String(session?.challengeDifficulty || (sessionMode === 'exam' ? 'hard' : 'medium'))
+  };
+};
+
+async function awardSessionCompletionWithCharacterEffects({ userId, session, authorization }) {
+  const sessionId = String(session?._id || '');
+  const sessionSelectedCharacterId =
+    session?.selectedCharacterId || session?.selected_character_id || null;
+  const durationMinutes = Number(session?.duration || 0);
+  const completionContext = getSessionCompletionContext(session);
+  let xpResult = null;
+
+  try {
+    if (completionContext.isChallenge) {
+      xpResult = await calculateChallengeXPWithCharacter({
+        authorization,
+        challengeId: completionContext.challengeId,
+        difficulty: completionContext.difficulty,
+        selectedCharacterId: sessionSelectedCharacterId,
+        baseXP: completionContext.baseXP,
+        sessionId
+      });
+    } else {
+      xpResult = await calculateSessionXPWithCharacter({
+        authorization,
+        duration: durationMinutes,
+        sessionType: completionContext.sessionType,
+        selectedCharacterId: sessionSelectedCharacterId,
+        baseXP: completionContext.baseXP,
+        sessionId,
+        courseId: session?.courseId || null
+      });
+    }
+  } catch (error) {
+    console.warn('[Session XP] Character XP calculation failed:', error.message);
+  }
+
+  const computedTotalXP = toSafeInteger(xpResult?.totalXP, completionContext.baseXP);
+  const awardPayload = {
+    action: completionContext.action,
+    xp_amount: computedTotalXP,
+    metadata: {
+      sessionId,
+      duration: durationMinutes,
+      sessionType: completionContext.sessionType,
+      challengeId: completionContext.challengeId,
+      challengeDifficulty: completionContext.difficulty,
+      characterMultiplier: Number(xpResult?.multiplier || 1)
+    }
+  };
+
+  const awardResponse = await axios.post(
+    `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+    awardPayload,
+    {
+      headers: { Authorization: authorization }
+    }
+  );
+
+  const awardData = awardResponse?.data || {};
+  const gamificationProfile = await fetchGamificationProfile(authorization);
+  let unlockSync = null;
+
+  try {
+    unlockSync = await syncUnlockProgressFromMetrics({
+      authorization,
+      metrics: buildUnlockMetricsFromAward({
+        awardData,
+        gamificationProfile
+      })
+    });
+  } catch (unlockError) {
+    console.warn('[Session XP] Unlock progress sync failed:', unlockError.message);
+  }
+
+  return {
+    action: completionContext.action,
+    baseXP: completionContext.baseXP,
+    awardedXP: computedTotalXP,
+    abilityBonuses: xpResult?.abilityBonuses || [],
+    multiplier: Number(xpResult?.multiplier || 1),
+    rank: {
+      name: awardData.rank_name || null,
+      index: Number.isFinite(Number(awardData.rank_index)) ? Number(awardData.rank_index) : null,
+      totalKnowledgePoints: Number.isFinite(Number(awardData.total_knowledge_points))
+        ? Number(awardData.total_knowledge_points)
+        : null,
+      knowledgePointsAwarded: Number.isFinite(Number(awardData.knowledge_points_awarded))
+        ? Number(awardData.knowledge_points_awarded)
+        : null,
+      kpToNextRank: Number.isFinite(Number(awardData.kp_to_next_rank))
+        ? Number(awardData.kp_to_next_rank)
+        : null
+    },
+    unlockSync
+  };
+}
+
+async function processSessionCompletionRewards({ userId, session, authorization }) {
+  let completionRewards = null;
+
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const yesterdaySession = await StudySession.findOne({
+      userId,
+      status: 'completed',
+      createdAt: { $gte: yesterday, $lt: todayStart }
+    });
+
+    if (yesterdaySession) {
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+        {
+          action: 'daily_streak',
+          metadata: { sessionId: session._id.toString() }
+        },
+        {
+          headers: { Authorization: authorization }
+        }
+      );
+    }
+
+    completionRewards = await awardSessionCompletionWithCharacterEffects({
+      userId,
+      session,
+      authorization
+    });
+
+    const completionAction = String(completionRewards?.action || 'session_complete').toLowerCase();
+    const questAction = completionAction.includes('challenge')
+      ? 'challenge_complete'
+      : 'study_session';
+
+    await axios.post(
+      `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
+      {
+        action: questAction
+      },
+      {
+        headers: { Authorization: authorization }
+      }
+    );
+  } catch (xpErr) {
+    console.warn('XP/streak award failed:', xpErr.message);
+  }
+
+  return completionRewards;
+}
 
 // Validation schema
 const createSessionSchema = Joi.object({
   taskId: Joi.string().allow('', null).optional(),
   topicId: Joi.string().allow('', null).optional(),
+  selectedCharacterId: Joi.string().allow('', null).optional(),
   duration: Joi.number().optional(),
   status: Joi.string().valid('active', 'completed').optional(),
   startTime: Joi.date().optional(),
@@ -34,6 +517,7 @@ const createSessionSchema = Joi.object({
 
 // Update session schema
 const updateSessionSchema = Joi.object({
+  selectedCharacterId: Joi.string().allow('', null).optional(),
   duration: Joi.number().optional(),
   status: Joi.string().valid('active', 'completed').optional(),
   endTime: Joi.date().optional(),
@@ -140,68 +624,179 @@ router.put('/:sessionId', async (req, res) => {
   await session.save();
 
   // Award daily streak XP if the user studied yesterday too
+  let completionRewards = null;
   if (req.body.status === 'completed') {
-    try {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(0, 0, 0, 0);
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const yesterdaySession = await StudySession.findOne({
-        userId: req.user.userId,
-        status: 'completed',
-        createdAt: { $gte: yesterday, $lt: todayStart }
-      });
-
-      if (yesterdaySession) {
-        const USER_PROFILE_URL =
-          process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-        await axios.post(
-          `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
-          {
-            action: 'daily_streak',
-            metadata: { sessionId: session._id.toString() }
-          },
-          {
-            headers: { Authorization: req.headers.authorization }
-          }
-        );
-      }
-
-      // Also award session_complete XP
-      const USER_PROFILE_URL =
-        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-      await axios.post(
-        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
-        {
-          action: 'session_complete',
-          metadata: { sessionId: session._id.toString(), duration: session.duration }
-        },
-        {
-          headers: { Authorization: req.headers.authorization }
-        }
-      );
-
-      // Progress quests
-      await axios.post(
-        `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
-        {
-          action: 'study_session'
-        },
-        {
-          headers: { Authorization: req.headers.authorization }
-        }
-      );
-    } catch (xpErr) {
-      console.warn('XP/streak award failed:', xpErr.message);
-    }
+    completionRewards = await processSessionCompletionRewards({
+      userId,
+      session,
+      authorization: req.headers.authorization
+    });
   }
 
   res.json({
     message: 'Session updated',
-    session
+    session,
+    completionRewards
   });
+});
+
+const challengeStartSchema = Joi.object({
+  challengeId: Joi.string().required(),
+  courseId: Joi.string().allow('', null).optional(),
+  topicId: Joi.string().allow('', null).optional(),
+  selectedCharacterId: Joi.string().allow('', null).optional(),
+  difficulty: Joi.string().valid('easy', 'medium', 'hard', 'expert').optional(),
+  notes: Joi.string().max(1000).allow('', null).optional()
+});
+
+const challengeCompleteSchema = Joi.object({
+  duration: Joi.number().optional(),
+  endTime: Joi.date().optional(),
+  focusScore: Joi.number().min(0).max(100).optional(),
+  notes: Joi.string().max(1000).allow('', null).optional(),
+  challengeDifficulty: Joi.string().valid('easy', 'medium', 'hard', 'expert').optional(),
+  completedSuccessfully: Joi.boolean().optional()
+});
+
+// POST /challenge/start — Start a dedicated challenge session
+router.post('/challenge/start', async (req, res) => {
+  const { error } = challengeStartSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const userId = req.user.userId;
+    const {
+      challengeId,
+      courseId = null,
+      topicId = null,
+      selectedCharacterId = null,
+      difficulty = 'medium',
+      notes = null
+    } = req.body;
+
+    const session = await StudySession.create({
+      userId,
+      taskId: challengeId,
+      courseId,
+      topicId,
+      selectedCharacterId,
+      mode: 'exam',
+      type: 'solo',
+      status: 'active',
+      notes,
+      challengeDifficulty: difficulty,
+      startTime: new Date()
+    });
+
+    res.status(201).json({
+      message: 'Challenge session started',
+      session: {
+        _id: session._id,
+        challengeId: session.taskId,
+        courseId: session.courseId,
+        topicId: session.topicId,
+        mode: session.mode,
+        status: session.status,
+        challengeDifficulty: session.challengeDifficulty,
+        startTime: session.startTime
+      }
+    });
+  } catch (challengeError) {
+    console.error('Error starting challenge session:', challengeError);
+    res.status(500).json({ error: 'Failed to start challenge session' });
+  }
+});
+
+// GET /challenge/:sessionId — Get challenge session details
+router.get('/challenge/:sessionId', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      userId,
+      mode: 'exam'
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Challenge session not found' });
+    }
+
+    res.json({
+      session: {
+        _id: session._id,
+        challengeId: session.taskId,
+        courseId: session.courseId,
+        topicId: session.topicId,
+        mode: session.mode,
+        type: session.type,
+        status: session.status,
+        duration: session.duration,
+        focusScore: session.focusScore,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        challengeDifficulty: session.challengeDifficulty
+      }
+    });
+  } catch (challengeError) {
+    console.error('Error fetching challenge session:', challengeError);
+    res.status(500).json({ error: 'Failed to fetch challenge session' });
+  }
+});
+
+// PUT /challenge/:sessionId/complete — Complete challenge session and award challenge KP/XP
+router.put('/challenge/:sessionId/complete', async (req, res) => {
+  const { error } = challengeCompleteSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const userId = req.user.userId;
+    const session = await StudySession.findOne({
+      _id: req.params.sessionId,
+      userId,
+      mode: 'exam'
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Challenge session not found' });
+    }
+
+    const completedSuccessfully = req.body.completedSuccessfully !== false;
+    Object.assign(session, req.body);
+    session.mode = 'exam';
+    session.status = 'completed';
+
+    if (!session.endTime) {
+      session.endTime = new Date();
+    }
+
+    if ((!session.duration || session.duration <= 0) && session.startTime && session.endTime) {
+      const diffMs = new Date(session.endTime).getTime() - new Date(session.startTime).getTime();
+      session.duration = Math.max(1, Math.round(diffMs / 60000));
+    }
+
+    await session.save();
+
+    const completionRewards = completedSuccessfully
+      ? await processSessionCompletionRewards({
+          userId,
+          session,
+          authorization: req.headers.authorization
+        })
+      : null;
+
+    res.json({
+      message: 'Challenge session completed',
+      session,
+      completionRewards
+    });
+  } catch (challengeError) {
+    console.error('Error completing challenge session:', challengeError);
+    res.status(500).json({ error: 'Failed to complete challenge session' });
+  }
 });
 
 // Get session statistics
@@ -270,7 +865,7 @@ const getCurrentTaskTimingGate = (session, currentTask) => {
 router.post('/setup', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { courseId, studyPlanId, mode } = req.body;
+    const { courseId, studyPlanId, mode, selectedCharacterId = null } = req.body;
 
     if (!courseId) return res.status(400).json({ error: 'courseId is required' });
 
@@ -347,6 +942,7 @@ router.post('/setup', async (req, res) => {
       courseId,
       studyPlanId,
       mode: mode || 'focus',
+      selectedCharacterId,
       status: 'active',
       type: 'solo',
       startTime: new Date(),
@@ -523,7 +1119,7 @@ const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notific
 router.post('/team', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { taskId, topicId, courseId, studyPlanId, mode, maxParticipants } = req.body;
+    const { taskId, topicId, courseId, studyPlanId, mode, maxParticipants, selectedCharacterId = null } = req.body;
 
     const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
 
@@ -569,6 +1165,7 @@ router.post('/team', async (req, res) => {
       topicId,
       courseId,
       studyPlanId,
+      selectedCharacterId,
       mode: mode || 'focus',
       type: 'team',
       status: 'active',
@@ -880,10 +1477,31 @@ router.get('/team/:sessionId/participants', async (req, res) => {
     const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team' });
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
+    const participantUserIds = Array.from(
+      new Set(session.participants.map((p) => String(p.userId)).filter(Boolean))
+    );
+
+    let characterByUserId = new Map();
+    if (participantUserIds.length > 0) {
+      const characterEntries = await Promise.all(
+        participantUserIds.map(async (participantUserId) => {
+          const participantAuthorization = buildDelegatedAuthorizationHeader(
+            participantUserId,
+            req.headers.authorization
+          );
+          const userCharacter = await getSelectedCharacterForAuthorization(participantAuthorization);
+          return [String(participantUserId), toParticipantCharacterSummary(userCharacter)];
+        })
+      );
+
+      characterByUserId = new Map(characterEntries);
+    }
+
     const participants = session.participants.map((p) => ({
       userId: p.userId,
       name: p.name,
       avatar: p.avatar,
+      character: characterByUserId.get(String(p.userId)) || null,
       role: p.role,
       joinedAt: p.joinedAt,
       leftAt: p.leftAt,
@@ -925,26 +1543,117 @@ router.put('/team/:sessionId/end', async (req, res) => {
 
     await session.save();
 
-    // Award XP to each participant
-    const USER_PROFILE_URL =
-      process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-    for (const p of session.participants) {
+    // Award XP to each participant with participant-specific auth context.
+    const participantMap = new Map();
+    for (const participant of session.participants) {
+      if (!participant?.userId) continue;
+      participantMap.set(String(participant.userId), participant);
+    }
+
+    if (!participantMap.has(String(session.userId))) {
+      participantMap.set(String(session.userId), {
+        userId: String(session.userId),
+        role: 'host'
+      });
+    }
+
+    const teamRewards = [];
+    for (const participant of participantMap.values()) {
+      const participantUserId = String(participant.userId);
+      const participantAuthorization = buildDelegatedAuthorizationHeader(
+        participantUserId,
+        req.headers.authorization
+      );
+
       try {
-        const action = p.role === 'host' ? 'team_session_host' : 'team_session';
-        await axios.post(
+        const action = participant.role === 'host' ? 'team_session_host' : 'team_session';
+        const baseXP = action === 'team_session_host' ? BASE_TEAM_HOST_XP : BASE_TEAM_SESSION_XP;
+        let socialXpResult = null;
+
+        try {
+          socialXpResult = await calculateSocialXPWithCharacter({
+            authorization: participantAuthorization,
+            activityType: action,
+            baseXP,
+            sessionId: session._id.toString()
+          });
+        } catch (xpError) {
+          console.warn(
+            `[Team Session] Character social XP calculation failed for ${participantUserId}:`,
+            xpError.message
+          );
+        }
+
+        const computedAwardedXP = toSafeInteger(socialXpResult?.totalXP, baseXP);
+        const awardResponse = await axios.post(
           `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
           {
             action,
-            metadata: { sessionId: session._id.toString(), participantUserId: p.userId }
+            xp_amount: computedAwardedXP,
+            metadata: {
+              sessionId: session._id.toString(),
+              participantUserId,
+              participantRole: participant.role || 'member',
+              teamSize: participantMap.size,
+              characterMultiplier: Number(socialXpResult?.multiplier || 1)
+            }
           },
-          { headers: { Authorization: req.headers.authorization } }
+          { headers: { Authorization: participantAuthorization } }
         );
+
+        const awardData = awardResponse?.data || {};
+        const gamificationProfile = await fetchGamificationProfile(participantAuthorization);
+        let unlockSync = null;
+
+        try {
+          unlockSync = await syncUnlockProgressFromMetrics({
+            authorization: participantAuthorization,
+            metrics: buildUnlockMetricsFromAward({
+              awardData,
+              gamificationProfile
+            })
+          });
+        } catch (unlockError) {
+          console.warn(
+            `[Team Session] Unlock sync failed for ${participantUserId}:`,
+            unlockError.message
+          );
+        }
+
+        teamRewards.push({
+          userId: participantUserId,
+          action,
+          baseXP,
+          awardedXP: computedAwardedXP,
+          abilityBonuses: socialXpResult?.abilityBonuses || [],
+          multiplier: Number(socialXpResult?.multiplier || 1),
+          rank: {
+            name: awardData.rank_name || null,
+            index: Number.isFinite(Number(awardData.rank_index))
+              ? Number(awardData.rank_index)
+              : null,
+            totalKnowledgePoints: Number.isFinite(Number(awardData.total_knowledge_points))
+              ? Number(awardData.total_knowledge_points)
+              : null,
+            knowledgePointsAwarded: Number.isFinite(Number(awardData.knowledge_points_awarded))
+              ? Number(awardData.knowledge_points_awarded)
+              : null,
+            kpToNextRank: Number.isFinite(Number(awardData.kp_to_next_rank))
+              ? Number(awardData.kp_to_next_rank)
+              : null
+          },
+          unlockSync
+        });
       } catch (err) {
-        console.warn('Team XP award failed for', p.userId, err.message);
+        console.warn('Team XP award failed for', participantUserId, err.message);
       }
     }
 
-    res.json({ message: 'Team session ended', session });
+    res.json({
+      message: 'Team session ended',
+      session,
+      teamRewards
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to end session' });
   }
