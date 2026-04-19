@@ -153,6 +153,7 @@ router.get('/', async (req, res) => {
       recentCompleted
     });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Error fetching quests:', error);
     res.status(500).json({ error: 'Failed to fetch quests' });
   }
@@ -190,6 +191,7 @@ router.post('/progress', async (req, res) => {
             });
             await profile.save();
           } catch (xpErr) {
+            // eslint-disable-next-line no-console
             console.warn('Quest XP award failed:', xpErr.message);
           }
         }
@@ -207,6 +209,7 @@ router.post('/progress', async (req, res) => {
 
     res.json({ updated: results });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Error progressing quests:', error);
     res.status(500).json({ error: 'Failed to progress quests' });
   }
