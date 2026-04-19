@@ -1,7 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
-const mongoose = require('mongoose');
 const { generateToken } = require('@study-partner/shared/auth');
 const { StudySession } = require('../models');
 
@@ -337,7 +336,7 @@ const getSessionCompletionContext = (session) => {
   };
 };
 
-async function awardSessionCompletionWithCharacterEffects({ userId, session, authorization }) {
+async function awardSessionCompletionWithCharacterEffects({ _userId, session, authorization }) {
   const sessionId = String(session?._id || '');
   const sessionSelectedCharacterId =
     session?.selectedCharacterId || session?.selected_character_id || null;
