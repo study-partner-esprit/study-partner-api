@@ -118,8 +118,7 @@ class XPCalculator {
    * @returns {Promise<Object>} Challenge XP result with bonuses
    */
   async calculateChallengeXP(challengeData) {
-    const { userId, challengeId, difficulty, completedSuccessfully, baseXP } =
-      challengeData;
+    const { userId, challengeId, difficulty, completedSuccessfully, baseXP } = challengeData;
 
     if (!completedSuccessfully) {
       return {
@@ -312,7 +311,7 @@ class XPCalculator {
       easy: 1.0,
       medium: 1.5,
       hard: 2.0,
-      expert: 2.5,
+      expert: 2.5
     };
 
     return multipliers[difficulty] || 1.0;

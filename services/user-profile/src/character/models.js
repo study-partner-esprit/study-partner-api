@@ -12,50 +12,50 @@ const characterSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      trim: true,
+      trim: true
     },
     description: {
       type: String,
-      required: true,
+      required: true
     },
     rarity: {
       type: String,
       enum: ['common', 'uncommon', 'rare', 'legendary'],
-      default: 'common',
+      default: 'common'
     },
     layer: {
       type: String,
       enum: ['base', 'progression', 'endgame'],
-      required: true,
+      required: true
     },
     primary_ability_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CharacterAbility',
-      required: true,
+      required: true
     },
     secondary_ability_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'CharacterAbility',
+      ref: 'CharacterAbility'
     },
     abilities: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'CharacterAbility',
-      },
+        ref: 'CharacterAbility'
+      }
     ],
     image_asset_path: {
-      type: String,
+      type: String
     },
     lore: {
-      type: String,
+      type: String
     },
     color_theme: {
       type: String,
-      default: '#ffffff',
+      default: '#ffffff'
     },
     playstyle: {
       type: String,
-      enum: ['focused', 'competitive', 'social', 'hybrid'],
+      enum: ['focused', 'competitive', 'social', 'hybrid']
     },
     unlock_condition: {
       type: {
@@ -68,24 +68,24 @@ const characterSchema = new mongoose.Schema(
           'group_session',
           'group_sessions',
           'rank',
-          'total_xp',
-        ],
+          'total_xp'
+        ]
       },
-      value: Number, // e.g., 30 for 30-day streak, 50 for 50 challenges
+      value: Number // e.g., 30 for 30-day streak, 50 for 50 challenges
     },
     purchase_price_usd_cents: {
       type: Number,
       default: 0,
-      min: 0,
+      min: 0
     },
     is_purchasable: {
       type: Boolean,
-      default: false,
+      default: false
     },
     is_active: {
       type: Boolean,
-      default: true,
-    },
+      default: true
+    }
   },
   { timestamps: true }
 );
@@ -96,11 +96,11 @@ const characterAbilitySchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      unique: true,
+      unique: true
     },
     description: {
       type: String,
-      required: true,
+      required: true
     },
     effect_type: {
       type: String,
@@ -117,34 +117,34 @@ const characterAbilitySchema = new mongoose.Schema(
         'CUMULATIVE_BOOST',
         'PERFECT_SESSION_BONUS',
         'TIME_MULTIPLIER',
-        'MULTI_BENEFIT',
+        'MULTI_BENEFIT'
       ],
-      required: true,
+      required: true
     },
     effect_value: mongoose.Schema.Types.Mixed, // Can be number or object
     cooldown_minutes: {
-      type: Number,
+      type: Number
     },
     trigger_condition: {
       type: String,
-      required: true,
+      required: true
     },
     icon_asset_path: {
-      type: String,
+      type: String
     },
     rarity: {
       type: String,
       enum: ['common', 'uncommon', 'rare', 'legendary'],
-      default: 'common',
+      default: 'common'
     },
     max_effectiveness: {
       type: Number,
-      default: 1.0, // 100% as 1.0
+      default: 1.0 // 100% as 1.0
     },
     hard_cap: {
       type: Number,
-      default: 1.25, // 25% cap as 1.25
-    },
+      default: 1.25 // 25% cap as 1.25
+    }
   },
   { timestamps: true }
 );
@@ -156,48 +156,48 @@ const userCharacterSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true, // One active character per user
+      unique: true // One active character per user
     },
     starter_character_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Character',
-      required: true,
+      required: true
     },
     character_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Character',
-      required: true,
+      required: true
     },
     owned_character_ids: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Character',
-      },
+        ref: 'Character'
+      }
     ],
     selected_at: {
       type: Date,
-      default: Date.now,
+      default: Date.now
     },
     mastery_level: {
       type: Number,
       default: 0,
       min: 0,
-      max: 10,
+      max: 10
     },
     mastery_points: {
       type: Number,
-      default: 0,
+      default: 0
     },
     total_abilities_used: {
       type: Number,
-      default: 0,
+      default: 0
     },
     unlocked_skins: [String],
     unlocked_titles: [String],
     prestige_level: {
       type: Number,
-      default: 0,
-    },
+      default: 0
+    }
   },
   { timestamps: true }
 );
@@ -208,12 +208,12 @@ const characterUnlockProgressSchema = new mongoose.Schema(
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: true
     },
     character_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Character',
-      required: true,
+      required: true
     },
     unlock_type: {
       type: String,
@@ -224,25 +224,25 @@ const characterUnlockProgressSchema = new mongoose.Schema(
         'group_session',
         'group_sessions',
         'rank',
-        'total_xp',
+        'total_xp'
       ],
-      required: true,
+      required: true
     },
     current_progress: {
       type: Number,
-      default: 0,
+      default: 0
     },
     required_progress: {
       type: Number,
-      required: true,
+      required: true
     },
     is_unlocked: {
       type: Boolean,
-      default: false,
+      default: false
     },
     unlocked_at: {
-      type: Date,
-    },
+      type: Date
+    }
   },
   { timestamps: true }
 );
@@ -253,37 +253,37 @@ const abilityEventSchema = new mongoose.Schema(
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: true
     },
     character_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Character',
-      required: true,
+      required: true
     },
     ability_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CharacterAbility',
-      required: true,
+      required: true
     },
     session_id: {
-      type: String,
+      type: String
     },
     trigger_condition_met: {
       type: Boolean,
-      required: true,
+      required: true
     },
     effect_value: {
-      type: Number,
+      type: Number
     },
     anti_abuse_flags: [String], // e.g., ['rate_limited', 'duplicate_session']
     validated: {
       type: Boolean,
-      default: false,
+      default: false
     },
     applied: {
       type: Boolean,
-      default: false,
-    },
+      default: false
+    }
   },
   { timestamps: true }
 );
@@ -294,44 +294,44 @@ const characterPurchaseSchema = new mongoose.Schema(
     user_id: {
       type: String,
       required: true,
-      index: true,
+      index: true
     },
     character_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Character',
-      required: true,
+      required: true
     },
     stripe_checkout_session_id: {
       type: String,
       unique: true,
-      sparse: true,
+      sparse: true
     },
     stripe_payment_intent_id: {
-      type: String,
+      type: String
     },
     amount_usd_cents: {
       type: Number,
       required: true,
-      min: 0,
+      min: 0
     },
     currency: {
       type: String,
-      default: 'usd',
+      default: 'usd'
     },
     status: {
       type: String,
       enum: ['pending', 'succeeded', 'failed', 'canceled'],
       default: 'pending',
-      index: true,
+      index: true
     },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
-      default: {},
+      default: {}
     },
     purchased_at: {
       type: Date,
-      default: null,
-    },
+      default: null
+    }
   },
   { timestamps: true }
 );
@@ -351,10 +351,7 @@ module.exports = {
   Character: mongoose.model('Character', characterSchema),
   CharacterAbility: mongoose.model('CharacterAbility', characterAbilitySchema),
   UserCharacter: mongoose.model('UserCharacter', userCharacterSchema),
-  CharacterUnlockProgress: mongoose.model(
-    'CharacterUnlockProgress',
-    characterUnlockProgressSchema
-  ),
+  CharacterUnlockProgress: mongoose.model('CharacterUnlockProgress', characterUnlockProgressSchema),
   AbilityEvent: mongoose.model('AbilityEvent', abilityEventSchema),
-  CharacterPurchase: mongoose.model('CharacterPurchase', characterPurchaseSchema),
+  CharacterPurchase: mongoose.model('CharacterPurchase', characterPurchaseSchema)
 };

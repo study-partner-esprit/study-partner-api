@@ -9,7 +9,7 @@ const path = require('path');
 
 // Load environment variables
 require('dotenv').config({
-  path: path.resolve(__dirname, '../.env'),
+  path: path.resolve(__dirname, '../.env')
 });
 
 const Character = require('../services/user-profile/src/character/models').Character;
@@ -17,7 +17,6 @@ const CharacterAbility = require('../services/user-profile/src/character/models'
 
 const CHARACTER_DATA = [
   // BASE LAYER CHARACTERS (Day 1-30)
-  
 
   // ENDGAME LAYER CHARACTER (Day 90+)
   {
@@ -31,7 +30,7 @@ const CHARACTER_DATA = [
     unlock_condition: {
       type: 'rank',
       value: 15,
-      description: 'Reach Master III (rank index 15) or higher',
+      description: 'Reach Master III (rank index 15) or higher'
     },
     icon: '👑',
     abilities: [
@@ -42,10 +41,10 @@ const CHARACTER_DATA = [
         effect_type: 'XP_MULTIPLIER',
         effect_value: 0.5,
         hard_cap: 1.25,
-        trigger_condition: 'session_completed',
-      },
-    ],
-  },
+        trigger_condition: 'session_completed'
+      }
+    ]
+  }
 ];
 
 /**
@@ -60,7 +59,7 @@ async function seedCharacters() {
 
     await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
-      useUnifiedTopology: true,
+      useUnifiedTopology: true
     });
 
     console.log('✅ Connected to MongoDB\n');
@@ -90,7 +89,7 @@ async function seedCharacters() {
             effect_value: abilityData.effect_value,
             hard_cap: abilityData.hard_cap,
             trigger_condition: abilityData.trigger_condition,
-            rarity: charData.rarity,
+            rarity: charData.rarity
           });
 
           await ability.save();
@@ -111,7 +110,7 @@ async function seedCharacters() {
         unlock_condition: charData.unlock_condition,
         primary_ability_id: abilityIds[0] || null,
         abilities: abilityIds,
-        icon: charData.icon,
+        icon: charData.icon
       });
 
       await character.save();
