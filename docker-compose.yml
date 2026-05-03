@@ -54,7 +54,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
@@ -91,7 +91,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3002
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
@@ -116,7 +116,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3003
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - AI_SERVICE_URL=http://ai-service:8000
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
@@ -167,7 +167,7 @@ services:
       - NODE_ENV=development
       - PORT=3005
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3005/api/v1/health']
       interval: 30s
@@ -189,7 +189,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3006
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
@@ -230,7 +230,7 @@ services:
       - NODE_ENV=development
       - PORT=3007
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - NOTIFICATION_DB_TIMEOUT_MS=${NOTIFICATION_DB_TIMEOUT_MS:-8000}
       - MONGO_SERVER_SELECTION_TIMEOUT_MS=${MONGO_SERVER_SELECTION_TIMEOUT_MS:-5000}
       - MONGO_CONNECT_TIMEOUT_MS=${MONGO_CONNECT_TIMEOUT_MS:-5000}
@@ -262,7 +262,7 @@ services:
       - '8000:8000'
     environment:
       - PYTHONPATH=/app
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
       - LM_STUDIO_URL=${LM_STUDIO_URL:-http://host.docker.internal:1234/v1/chat/completions}
