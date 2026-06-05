@@ -6,7 +6,8 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck
+  healthCheck,
+  logger
 } = require('@study-partner/shared');
 const { authenticate } = require('@study-partner/shared/auth');
 
@@ -14,7 +15,7 @@ const { authenticate } = require('@study-partner/shared/auth');
 const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
-    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    logger.error(`[FATAL] Missing required environment variable: ${key}`);
     process.exit(1);
   }
 }

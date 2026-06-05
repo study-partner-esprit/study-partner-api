@@ -7,16 +7,19 @@ let isConnected = false;
 
 /**
  * Connect to MongoDB
+ * @param {string} [uri] - Optional MongoDB URI (defaults to MONGODB_URI env)
  * @returns {Promise<void>}
  */
-async function connectDatabase() {
+async function connectDatabase(uri) {
+  const connectionUri = uri || MONGODB_URI;
+
   if (isConnected) {
     logger.info('Using existing MongoDB connection');
     return;
   }
 
   try {
-    await mongoose.connect(MONGODB_URI);
+    await mongoose.connect(connectionUri);
 
     isConnected = true;
     logger.info('Connected to MongoDB successfully');
