@@ -5,7 +5,8 @@ const {
   securityMiddleware,
   loggingMiddleware,
   errorHandler,
-  rateLimiter
+  rateLimiter,
+  logger
 } = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
 
@@ -13,7 +14,7 @@ const aiRoutes = require('./routes/ai');
 const REQUIRED_ENV = ['JWT_SECRET'];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
-    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    logger.error(`[FATAL] Missing required environment variable: ${key}`);
     process.exit(1);
   }
 }
@@ -54,29 +55,6 @@ app.use('/api/v1/ai/signals', aiRateLimiter);
 
 // Protected AI routes (require authentication)
 app.use('/api/v1/ai', authenticate, aiRoutes);
-
-// Log registered routes for debugging
-if (process.env.NODE_ENV !== 'test') {
-  console.log('[DEBUG] Registered routes:');
-  app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      console.log(
-        `  ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`
-      );
-    } else if (middleware.name === 'router') {
-      console.log(`  Router mounted at: ${middleware.regexp}`);
-      if (middleware.handle.stack) {
-        middleware.handle.stack.forEach((handler) => {
-          if (handler.route) {
-            console.log(
-              `    ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`
-            );
-          }
-        });
-      }
-    }
-  });
-}
 
 // Error handler (must be last)
 app.use(errorHandler);

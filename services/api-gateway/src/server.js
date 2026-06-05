@@ -1,13 +1,6 @@
 require('dotenv').config();
 const app = require('./app');
-// const { logger } = require('@study-partner/shared');
-
-// Temporary logger until shared package is fixed
-const logger = {
-  info: (msg) => console.log(`[INFO] ${msg}`),
-  error: (msg) => console.error(`[ERROR] ${msg}`),
-  warn: (msg) => console.warn(`[WARN] ${msg}`)
-};
+const { logger } = require('@study-partner/shared');
 
 const PORT = process.env.PORT || 8000;
 
