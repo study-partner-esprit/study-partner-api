@@ -261,7 +261,7 @@ services:
     ports:
       - '8000:8000'
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app:/app/agents/evaluator
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
