@@ -418,6 +418,112 @@ router.post('/evaluator/session', tierGate('vip', 'vip_plus', 'trial'), async (r
   }
 });
 
+// Socratic Evaluation - Start new session
+router.post('/evaluator/socratic/start', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  const socraticStartSchema = Joi.object({
+    task_title: Joi.string().required(),
+    task_description: Joi.string().required(),
+    task_details: Joi.string().required(),
+    max_attempts: Joi.number().integer().min(1).max(10).optional().default(5)
+  });
+
+  const { error, value } = socraticStartSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/socratic/start`, {
+      user_id: req.user.userId,
+      ...value
+    });
+
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Socratic session start failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
+// Socratic Evaluation - Submit answer
+router.post('/evaluator/socratic/answer', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+  const socraticAnswerSchema = Joi.object({
+    session_id: Joi.string().required(),
+    user_answer: Joi.string().required()
+  });
+
+  const { error, value } = socraticAnswerSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/socratic/answer`, value);
+
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Socratic answer failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
+// Fatigue Reset - Reset per-user fatigue detector state
+router.post('/signals/fatigue/reset', tierGate('vip_plus', 'trial'), async (req, res) => {
+  const fatigueResetSchema = Joi.object({
+    user_id: Joi.string().required()
+  });
+
+  const { error, value } = fatigueResetSchema.validate(req.body || {});
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const axios = require('axios');
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/fatigue/reset`, value);
+
+    return res.json(response.data);
+  } catch (err) {
+    if (err.response) {
+      return res.status(err.response.status).json({
+        error: 'Fatigue reset failed',
+        details: err.response.data.detail || err.message
+      });
+    }
+
+    return res.status(503).json({
+      error: 'AI service unavailable',
+      details: err.message
+    });
+  }
+});
+
 router.get('/vector/status/:courseId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
