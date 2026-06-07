@@ -39,33 +39,34 @@ const getCacheClient = () => {
       redisUnavailable = true;
     });
 
+    const safely = async (fn) => {
+      try {
+        if (client.status !== 'ready' && client.status !== 'connecting') {
+          try { await client.connect(); } catch { /* will throw below */ }
+        }
+        return await fn();
+      } catch (err) {
+        redisUnavailable = true;
+        redisClient = null;
+        client.disconnect();
+        return null;
+      }
+    };
+
     redisClient = {
       isEnabled: true,
       async get(key) {
-        try {
-          await client.connect();
-        } catch {
-          // ignore connect errors; ioredis may already be connected
-        }
-        return client.get(key);
+        const result = await safely(() => client.get(key));
+        return result;
       },
       async setex(key, ttlSeconds, value) {
-        try {
-          await client.connect();
-        } catch {
-          // ignore connect errors; ioredis may already be connected
-        }
-        await client.set(key, value, 'EX', ttlSeconds);
-        return true;
+        const result = await safely(() => client.set(key, value, 'EX', ttlSeconds));
+        return result !== null;
       },
       async del(...keys) {
         if (!keys.length) return 0;
-        try {
-          await client.connect();
-        } catch {
-          // ignore connect errors; ioredis may already be connected
-        }
-        return client.del(...keys);
+        const result = await safely(() => client.del(...keys));
+        return typeof result === 'number' ? result : 0;
       }
     };
 

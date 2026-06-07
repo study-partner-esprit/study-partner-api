@@ -32,7 +32,8 @@ const analyticsEventSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    collection: 'analytics_events'
   }
 );
 
