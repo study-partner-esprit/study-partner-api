@@ -280,6 +280,11 @@ router.get('/insights', async (req, res) => {
       sessions: dayOfWeekCount[i],
       totalDuration: Math.round(dayOfWeekDuration[i])
     })),
+    hourlyActivity: Array.from({ length: 24 }, (_, i) => ({
+      hour: i,
+      count: hourlyActivity[i]?.count || 0,
+      totalDuration: hourlyActivity[i]?.totalDuration || 0
+    })),
     productivity:
       completedTasks.length > 0
         ? Math.round((completedTasks.length / (completedTasks.length + studySessions.length)) * 100)
@@ -287,6 +292,45 @@ router.get('/insights', async (req, res) => {
   };
 
   const payload = { insights };
+  await cache.setex(cacheKey, 120, JSON.stringify(payload));
+  res.json(payload);
+});
+
+// Get daily activity breakdown
+router.get('/daily-activity', async (req, res) => {
+  const userId = req.user.userId;
+  const { days = 30 } = req.query;
+  const cacheKey = buildCacheKey(userId, 'daily-activity', { days: Number(days) });
+
+  const cached = await cache.get(cacheKey);
+  if (cached) return res.json(JSON.parse(cached));
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - parseInt(days));
+
+  const events = await AnalyticsEvent.find({
+    userId,
+    timestamp: { $gte: startDate }
+  }).sort({ timestamp: 1 });
+
+  const dailyMap = {};
+  for (const event of events) {
+    const date = event.timestamp.toISOString().split('T')[0];
+    if (!dailyMap[date]) {
+      dailyMap[date] = { date, sessions: 0, duration: 0, tasks: 0, totalEvents: 0 };
+    }
+    dailyMap[date].totalEvents++;
+    if (event.eventType === 'study_session_completed') {
+      dailyMap[date].sessions++;
+      dailyMap[date].duration += event.metadata?.duration || 0;
+    } else if (event.eventType === 'task_completed') {
+      dailyMap[date].tasks++;
+    }
+  }
+
+  const dailyActivity = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+  const payload = { dailyActivity };
   await cache.setex(cacheKey, 120, JSON.stringify(payload));
   res.json(payload);
 });

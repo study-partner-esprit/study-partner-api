@@ -7,10 +7,14 @@ const { StudySession } = require('../models');
 const router = express.Router();
 
 const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+const ANALYTICS_SERVICE_URL = process.env.ANALYTICS_SERVICE_URL || 'http://analytics-service:3006';
 const BASE_SESSION_COMPLETE_XP = Number(process.env.BASE_SESSION_COMPLETE_XP || 10);
 const BASE_CHALLENGE_COMPLETE_XP = Number(process.env.BASE_CHALLENGE_COMPLETE_XP || 30);
 const BASE_TEAM_SESSION_XP = Number(process.env.BASE_TEAM_SESSION_XP || 20);
 const BASE_TEAM_HOST_XP = Number(process.env.BASE_TEAM_HOST_XP || 30);
+const BYPASS_TASK_TIMING_GATE =
+  String(process.env.BYPASS_TASK_TIMING_GATE || '').toLowerCase() === 'true' ||
+  String(process.env.NODE_ENV || '').toLowerCase() === 'test';
 const CHALLENGE_DIFFICULTY_MULTIPLIER = {
   easy: 1,
   medium: 1.5,
@@ -67,6 +71,31 @@ const buildUnlockMetricsFromAward = ({ awardData = {}, gamificationProfile = nul
   };
 };
 
+const getAxiosErrorDetails = (error) => ({
+  message: error.message,
+  status: error.response?.status,
+  data: error.response?.data
+});
+
+const trackAnalyticsEvent = async ({ authorization, eventType, metadata = {} }) => {
+  if (!authorization) return null;
+
+  try {
+    const response = await axios.post(
+      `${ANALYTICS_SERVICE_URL}/api/v1/analytics/track`,
+      { eventType, metadata },
+      {
+        headers: { Authorization: authorization }
+      }
+    );
+
+    return response?.data || null;
+  } catch (error) {
+    console.warn('[Analytics] Event tracking failed:', getAxiosErrorDetails(error));
+    return null;
+  }
+};
+
 const fetchGamificationProfile = async (authorization) => {
   if (!authorization) return null;
 
@@ -77,7 +106,7 @@ const fetchGamificationProfile = async (authorization) => {
 
     return response?.data || null;
   } catch (error) {
-    console.warn('[Gamification] Profile lookup failed:', error.message);
+    console.warn('[Gamification] Profile lookup failed:', getAxiosErrorDetails(error));
     return null;
   }
 };
@@ -151,7 +180,7 @@ const executeCharacterAbilityForReward = async ({
 
     return response?.data?.data || null;
   } catch (error) {
-    console.warn('[Character API] Ability trigger failed:', error.message);
+    console.warn('[Character API] Ability trigger failed:', getAxiosErrorDetails(error));
     return null;
   }
 };
@@ -292,7 +321,7 @@ const syncUnlockProgressFromMetrics = async ({ authorization, metrics }) => {
 
     return response?.data?.data || null;
   } catch (error) {
-    console.warn('[Character API] Unlock progress sync failed:', error.message);
+    console.warn('[Character API] Unlock progress sync failed:', getAxiosErrorDetails(error));
     return null;
   }
 };
@@ -366,7 +395,7 @@ async function awardSessionCompletionWithCharacterEffects({ _userId, session, au
       });
     }
   } catch (error) {
-    console.warn('[Session XP] Character XP calculation failed:', error.message);
+    console.warn('[Session XP] Character XP calculation failed:', getAxiosErrorDetails(error));
   }
 
   const computedTotalXP = toSafeInteger(xpResult?.totalXP, completionContext.baseXP);
@@ -404,7 +433,7 @@ async function awardSessionCompletionWithCharacterEffects({ _userId, session, au
       })
     });
   } catch (unlockError) {
-    console.warn('[Session XP] Unlock progress sync failed:', unlockError.message);
+    console.warn('[Session XP] Unlock progress sync failed:', getAxiosErrorDetails(unlockError));
   }
 
   return {
@@ -480,7 +509,7 @@ async function processSessionCompletionRewards({ userId, session, authorization 
       }
     );
   } catch (xpErr) {
-    console.warn('XP/streak award failed:', xpErr.message);
+    console.warn('XP/streak award failed:', getAxiosErrorDetails(xpErr));
   }
 
   return completionRewards;
@@ -629,6 +658,18 @@ router.put('/:sessionId', async (req, res) => {
       userId,
       session,
       authorization: req.headers.authorization
+    });
+
+    await trackAnalyticsEvent({
+      authorization: req.headers.authorization,
+      eventType: 'study_session_completed',
+      metadata: {
+        sessionId: session._id.toString(),
+        duration: session.duration || 0,
+        focusScore: session.focusScore || 0,
+        completedTasks: session.taskProgress?.completedTasks || 0,
+        totalTasks: session.taskProgress?.totalTasks || 0
+      }
     });
   }
 
@@ -787,6 +828,21 @@ router.put('/challenge/:sessionId/complete', async (req, res) => {
         })
       : null;
 
+    if (completedSuccessfully) {
+      await trackAnalyticsEvent({
+        authorization: req.headers.authorization,
+        eventType: 'study_session_completed',
+        metadata: {
+          sessionId: session._id.toString(),
+          duration: session.duration || 0,
+          focusScore: session.focusScore || 0,
+          sessionType: 'challenge',
+          challengeId: session.taskId || null,
+          challengeDifficulty: session.challengeDifficulty || null
+        }
+      });
+    }
+
     res.json({
       message: 'Challenge session completed',
       session,
@@ -842,6 +898,17 @@ const getCurrentTaskTimingGate = (session, currentTask) => {
     Number.isFinite(estimatedMinutesRaw) && estimatedMinutesRaw > 0
       ? estimatedMinutesRaw
       : DEFAULT_TASK_ESTIMATED_MINUTES;
+
+  if (BYPASS_TASK_TIMING_GATE) {
+    return {
+      canAdvance: true,
+      estimatedMinutes,
+      elapsedMs: 0,
+      minRequiredMs: 0,
+      remainingMs: 0,
+      bypassed: true
+    };
+  }
 
   const startedAt = currentTask?.startedAt || session?.startTime || session?.createdAt;
   const startedAtMs = startedAt ? new Date(startedAt).getTime() : Date.now();
@@ -1038,6 +1105,56 @@ router.post('/:sessionId/task/complete', async (req, res) => {
         { status: 'completed', completedAt: new Date() }
       ).catch((err) => console.warn('Task sync failed:', err.message));
     }
+
+    // Auto-award XP on task completion during study session
+    try {
+      const priorityMap = {
+        easy: 'task_complete_easy',
+        medium: 'task_complete_medium',
+        hard: 'task_complete_hard',
+        expert: 'task_complete_hard'
+      };
+      const action = priorityMap[session.challengeDifficulty] || 'task_complete_medium';
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+        {
+          action,
+          metadata: {
+            taskId: completedTaskId ? completedTaskId.toString() : undefined,
+            taskIndex: currentIndex,
+            sessionId: session._id.toString(),
+            title: taskProgress.tasks[currentIndex]?.title
+          }
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
+      // Progress quests
+      await axios.post(
+        `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
+        {
+          action: 'task_complete'
+        },
+        {
+          headers: { Authorization: req.headers.authorization }
+        }
+      );
+    } catch (xpErr) {
+      console.warn('[Session Task Complete] XP/Quest award failed:', getAxiosErrorDetails(xpErr));
+    }
+
+    await trackAnalyticsEvent({
+      authorization: req.headers.authorization,
+      eventType: 'task_completed',
+      metadata: {
+        sessionId: session._id.toString(),
+        taskId: completedTaskId ? completedTaskId.toString() : null,
+        taskIndex: currentIndex,
+        taskTitle: taskProgress.tasks[currentIndex]?.title,
+        xpEarned
+      }
+    });
 
     const allDone = taskProgress.completedTasks >= taskProgress.totalTasks;
 
@@ -1588,7 +1705,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
         } catch (xpError) {
           console.warn(
             `[Team Session] Character social XP calculation failed for ${participantUserId}:`,
-            xpError.message
+            getAxiosErrorDetails(xpError)
           );
         }
 
@@ -1624,7 +1741,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
         } catch (unlockError) {
           console.warn(
             `[Team Session] Unlock sync failed for ${participantUserId}:`,
-            unlockError.message
+            getAxiosErrorDetails(unlockError)
           );
         }
 
@@ -1653,8 +1770,22 @@ router.put('/team/:sessionId/end', async (req, res) => {
           unlockSync
         });
       } catch (err) {
-        console.warn('Team XP award failed for', participantUserId, err.message);
+        console.warn('Team XP award failed for', participantUserId, getAxiosErrorDetails(err));
       }
+
+      await trackAnalyticsEvent({
+        authorization: participantAuthorization,
+        eventType: 'study_session_completed',
+        metadata: {
+          sessionId: session._id.toString(),
+          duration: session.duration || 0,
+          sessionType: 'team',
+          participantRole: participant.role || 'member',
+          teamSize: participantMap.size,
+          completedTasks: session.taskProgress?.completedTasks || 0,
+          totalTasks: session.taskProgress?.totalTasks || 0
+        }
+      });
     }
 
     res.json({
