@@ -1,5 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
+const crypto = require('crypto');
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
 const Payment = require('../models/Payment');
@@ -95,10 +96,15 @@ router.put('/users/:userId', async (req, res) => {
       updates.isActive = !!isActive;
     }
 
+    const updatableRoles = ['student', 'admin'];
+
     if (typeof isAdmin !== 'undefined') {
       updates.isAdmin = !!isAdmin;
       updates.role = isAdmin ? 'admin' : role === 'admin' ? 'student' : role || 'student';
     } else if (typeof role !== 'undefined') {
+      if (!updatableRoles.includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
       updates.role = role;
       updates.isAdmin = role === 'admin';
     }
@@ -314,7 +320,7 @@ router.post('/coupons', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const code = String(value.code || `partner-${Math.random().toString(36).slice(2, 10)}`)
+    const code = String(value.code || `partner-${crypto.randomBytes(4).toString('hex')}`)
       .trim()
       .toLowerCase();
 

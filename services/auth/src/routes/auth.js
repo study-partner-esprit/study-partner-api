@@ -16,7 +16,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const hashPassword = async (password) => {
-  return await bcrypt.hash(password, 10);
+  return await bcrypt.hash(password, 12);
+};
+
+const generateOtp = (length = 6) => {
+  const min = 10 ** (length - 1);
+  const max = 10 ** length - 1;
+  return String(crypto.randomInt(min, max + 1));
 };
 
 const verifyPassword = async (password, hash) => {
@@ -86,19 +92,6 @@ const redeemCouponSchema = Joi.object({
   expectedTier: Joi.string().valid('vip', 'vip_plus', 'normal', 'trial').optional()
 });
 
-const planChangeSchema = Joi.object({
-  newTier: Joi.string().valid('normal', 'vip', 'vip_plus').required(),
-  durationMonths: Joi.number().integer().min(1).max(24).default(1)
-});
-
-const COUPON_TIER_MAP = {
-  'admin@vip': 'vip',
-  'admin@vip+': 'vip_plus',
-  'admin@vip_plus': 'vip_plus',
-  'admin@normal': 'normal',
-  'admin@trial': 'trial'
-};
-
 function normalizeOnboardingDraft(input = {}) {
   const cleaned = {
     studyGoals: Array.isArray(input.studyGoals)
@@ -144,21 +137,22 @@ function normalizeOnboardingDraft(input = {}) {
   return cleaned;
 }
 
-function couponsEnabled() {
-  if (process.env.ALLOW_TEST_COUPONS === 'true') return true;
-  return process.env.NODE_ENV !== 'production';
+// Test coupons (env-var COUPON_CODES) are a DEVELOPMENT-only convenience.
+// They are never honored in production. Coupons stored in the database by
+// admins are always eligible and are NOT gated by this flag.
+function testCouponsEnabled() {
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.ALLOW_TEST_COUPONS !== 'false';
 }
 
-function resolveTierFromCoupon(rawCoupon) {
+function resolveTestTierFromCoupon(rawCoupon) {
+  if (!testCouponsEnabled()) return null;
+
   const normalized = String(rawCoupon || '')
     .trim()
     .toLowerCase();
 
   if (!normalized) return null;
-
-  if (COUPON_TIER_MAP[normalized]) {
-    return COUPON_TIER_MAP[normalized];
-  }
 
   // Optional extra coupons from env: COUPON_CODES=code1:vip,code2:vip_plus
   const envCoupons = (process.env.COUPON_CODES || '').split(',');
@@ -451,103 +445,22 @@ router.get('/me', authenticate, async (req, res) => {
   res.json({ user: withSubscriptionMeta(user) });
 });
 
-// Validate and apply manual plan change (used near end-of-cycle windows)
-router.post('/plan/change', authenticate, async (req, res) => {
-  const { error, value } = planChangeSchema.validate(req.body || {});
-  if (error) {
-    return res.status(400).json({ error: error.details[0].message });
-  }
-
-  const user = await User.findById(req.user.userId);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  const snapshot = getSubscriptionSnapshot(user);
-  if (snapshot.hasActiveSubscription && !snapshot.canChangePlan) {
-    return res.status(403).json({
-      error: `Plan change is locked until last 5 days. ${snapshot.daysUntilCanChange} day(s) remaining.`
-    });
-  }
-
-  user.tier = value.newTier;
-  user.tierChangedAt = new Date();
-
-  if (value.newTier === 'normal') {
-    user.subscriptionId = null;
-    user.subscriptionStartAt = null;
-    user.subscriptionEndAt = null;
-    user.subscriptionDurationMonths = 0;
-    user.renewalDate = null;
-    user.canChangeAfter = null;
-    user.autoRenew = false;
-  } else {
-    const startAt = new Date();
-    const endAt = new Date(startAt);
-    endAt.setMonth(endAt.getMonth() + value.durationMonths);
-    user.subscriptionStartAt = startAt;
-    user.subscriptionEndAt = endAt;
-    user.subscriptionDurationMonths = value.durationMonths;
-    user.renewalDate = endAt;
-    user.canChangeAfter = new Date(endAt.getTime() - 5 * 24 * 60 * 60 * 1000);
-    user.autoRenew = false;
-  }
-
-  await user.save();
-  return res.json({ message: 'Plan changed', user: withSubscriptionMeta(user) });
-});
-
-// Update user tier (admin or payment webhook)
-router.put('/tier', authenticate, async (req, res) => {
-  const { tier } = req.body;
-  const validTiers = ['trial', 'normal', 'vip', 'vip_plus'];
-  if (!tier || !validTiers.includes(tier)) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid tier. Must be one of: trial, normal, vip, vip_plus' });
-  }
-
-  const user = await User.findById(req.user.userId);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  const snapshot = getSubscriptionSnapshot(user);
-  if (snapshot.hasActiveSubscription && !snapshot.canChangePlan && user.tier !== tier) {
-    return res.status(403).json({
-      error: `Plan change is locked until last 5 days. ${snapshot.daysUntilCanChange} day(s) remaining.`
-    });
-  }
-
-  user.tier = tier;
-  user.tierChangedAt = new Date();
-  if (tier === 'trial') {
-    user.trialStartedAt = new Date();
-    user.trialExpiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
-  }
-  await user.save();
-
-  res.json({ message: 'Tier updated successfully', user: withSubscriptionMeta(user) });
-});
-
-// Redeem plan coupon for testing and controlled plan assignment.
+// Redeem plan coupon for controlled plan assignment.
+// DB coupons (admin-created) are always eligible; env-var test coupons only in dev.
 router.post('/coupon/redeem', authenticate, async (req, res) => {
-  if (!couponsEnabled()) {
-    return res.status(403).json({ error: 'Coupon redemption disabled' });
-  }
-
   const { error, value } = redeemCouponSchema.validate(req.body || {});
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
   }
 
-  const targetTier = resolveTierFromCoupon(value.coupon);
   const normalizedCoupon = String(value.coupon || '')
     .trim()
     .toLowerCase();
   const storedCoupon = await Coupon.findOne({ code: normalizedCoupon });
 
-  const resolvedTier = storedCoupon ? storedCoupon.targetTier : targetTier;
+  const resolvedTier = storedCoupon
+    ? storedCoupon.targetTier
+    : resolveTestTierFromCoupon(value.coupon);
   if (!resolvedTier) {
     return res.status(400).json({ error: 'Invalid coupon code' });
   }
@@ -626,8 +539,9 @@ router.post('/coupon/redeem', authenticate, async (req, res) => {
 });
 
 // Dev helper to make test coupons discoverable.
+// Dev helper to make env-var test coupons discoverable (development only).
 router.get('/coupon/list', authenticate, async (req, res) => {
-  if (!couponsEnabled()) {
+  if (!testCouponsEnabled()) {
     return res.status(403).json({ error: 'Coupon listing disabled' });
   }
 
@@ -647,10 +561,6 @@ router.get('/coupon/list', authenticate, async (req, res) => {
 
   return res.json({
     coupons: [
-      { code: 'admin@vip', tier: 'vip' },
-      { code: 'admin@vip+', tier: 'vip_plus' },
-      { code: 'admin@normal', tier: 'normal' },
-      { code: 'admin@trial', tier: 'trial' },
       ...envCoupons,
       ...dbCoupons.map((c) => ({
         code: c.code,
@@ -708,7 +618,7 @@ router.post('/resend-verification', async (req, res) => {
     if (user.isVerified) return res.json({ message: 'Email already verified' });
 
     const token = crypto.randomBytes(32).toString('hex');
-    const verificationOtp = String(Math.floor(100000 + Math.random() * 900000));
+  const verificationOtp = generateOtp();
     user.verificationToken = token;
     user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
     user.verificationOtp = verificationOtp;

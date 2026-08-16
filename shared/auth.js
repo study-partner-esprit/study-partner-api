@@ -22,7 +22,7 @@ function getJwtSecret() {
  * @returns {Promise<string>}
  */
 async function hashPassword(password) {
-  const salt = await bcrypt.genSalt(10);
+  const salt = await bcrypt.genSalt(12);
   return bcrypt.hash(password, salt);
 }
 
@@ -101,6 +101,26 @@ function requireRole(role) {
   };
 }
 
+/**
+ * Middleware to restrict an endpoint to admins or internal service-to-service
+ * calls. Internal callers must present the shared INTERNAL_API_SECRET via the
+ * `x-internal-secret` header. A normal (non-admin) user JWT alone is rejected.
+ * Fails closed: if INTERNAL_API_SECRET is not configured, only admins pass.
+ */
+function requireInternalOrAdmin(req, res, next) {
+  if (req.user && (req.user.role === 'admin' || req.user.isAdmin === true)) {
+    return next();
+  }
+
+  const expectedSecret = process.env.INTERNAL_API_SECRET;
+  const providedSecret = req.headers['x-internal-secret'];
+  if (expectedSecret && providedSecret && providedSecret === expectedSecret) {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Forbidden: admin or internal access required' });
+}
+
 module.exports = {
   UserRole,
   hashPassword,
@@ -108,5 +128,6 @@ module.exports = {
   generateToken,
   verifyToken,
   authenticate,
-  requireRole
+  requireRole,
+  requireInternalOrAdmin
 };

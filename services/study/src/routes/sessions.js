@@ -77,6 +77,13 @@ const getAxiosErrorDetails = (error) => ({
   data: error.response?.data
 });
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 const trackAnalyticsEvent = async ({ authorization, eventType, metadata = {} }) => {
   if (!authorization) return null;
 
@@ -174,7 +181,7 @@ const executeCharacterAbilityForReward = async ({
         baseXp: baseXP
       },
       {
-        headers: { Authorization: authorization }
+        headers: buildInternalHeaders(authorization)
       }
     );
 
@@ -315,7 +322,7 @@ const syncUnlockProgressFromMetrics = async ({ authorization, metrics }) => {
       `${USER_PROFILE_URL}/api/v1/user/unlock-progress/sync`,
       { metrics: metrics || {} },
       {
-        headers: { Authorization: authorization }
+        headers: buildInternalHeaders(authorization)
       }
     );
 
@@ -416,7 +423,7 @@ async function awardSessionCompletionWithCharacterEffects({ _userId, session, au
     `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
     awardPayload,
     {
-      headers: { Authorization: authorization }
+      headers: buildInternalHeaders(authorization)
     }
   );
 
@@ -483,7 +490,7 @@ async function processSessionCompletionRewards({ userId, session, authorization 
           metadata: { sessionId: session._id.toString() }
         },
         {
-          headers: { Authorization: authorization }
+          headers: buildInternalHeaders(authorization)
         }
       );
     }
@@ -505,7 +512,7 @@ async function processSessionCompletionRewards({ userId, session, authorization 
         action: questAction
       },
       {
-        headers: { Authorization: authorization }
+        headers: buildInternalHeaders(authorization)
       }
     );
   } catch (xpErr) {
@@ -1127,7 +1134,7 @@ router.post('/:sessionId/task/complete', async (req, res) => {
           }
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
       // Progress quests
@@ -1137,7 +1144,7 @@ router.post('/:sessionId/task/complete', async (req, res) => {
           action: 'task_complete'
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
     } catch (xpErr) {
@@ -1375,7 +1382,7 @@ router.post('/team/:sessionId/join', async (req, res) => {
           message: `A study partner joined your team session!`,
           metadata: { sessionId: session._id.toString() }
         },
-        { headers: { Authorization: req.headers.authorization } }
+        { headers: buildInternalHeaders(req.headers.authorization) }
       );
     } catch (err) {
       console.warn('Team join notification failed:', err.message);
@@ -1434,7 +1441,7 @@ router.post('/team/join-by-code', async (req, res) => {
           message: `A study partner joined your team session!`,
           metadata: { sessionId: session._id.toString() }
         },
-        { headers: { Authorization: req.headers.authorization } }
+        { headers: buildInternalHeaders(req.headers.authorization) }
       );
     } catch (err) {
       console.warn('Team join notification failed:', err.message);
@@ -1537,7 +1544,7 @@ router.post('/team/:sessionId/invite', async (req, res) => {
       console.log('[Team Invite] Sending notification:', notificationPayload);
 
       await axios.post(`${NOTIFICATION_URL}/api/v1/notifications`, notificationPayload, {
-        headers: { Authorization: req.headers.authorization }
+        headers: buildInternalHeaders(req.headers.authorization)
       });
 
       console.log(`[Team Invite] Notification sent successfully to ${friendId}`);
@@ -1582,7 +1589,7 @@ router.put('/team/:sessionId/start', async (req, res) => {
             inviteCode: session.inviteCode
           }
         },
-        { headers: { Authorization: req.headers.authorization } }
+        { headers: buildInternalHeaders(req.headers.authorization) }
       );
     } catch (err) {
       console.warn('[Team Start] Broadcast failed:', err.message);
@@ -1723,7 +1730,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
               characterMultiplier: Number(socialXpResult?.multiplier || 1)
             }
           },
-          { headers: { Authorization: participantAuthorization } }
+          { headers: buildInternalHeaders(participantAuthorization) }
         );
 
         const awardData = awardResponse?.data || {};

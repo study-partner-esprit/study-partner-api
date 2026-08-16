@@ -8,7 +8,7 @@ services:
     container_name: mongodb
     restart: always
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-admin}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set}
@@ -28,6 +28,10 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -38,7 +42,10 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - ALLOW_TEST_COUPONS=false
+      - COUPON_CODES=
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
@@ -54,6 +61,9 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -65,11 +75,16 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-https://studypartner.app}
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -81,11 +96,16 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     depends_on:
       mongodb:
         condition: service_healthy
     volumes:
       - study_uploads:/app/services/study/uploads
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -96,6 +116,10 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -107,9 +131,14 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -121,9 +150,13 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -134,8 +167,13 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
+      - STUDY_SERVICE_URL=http://study-service:3003
       - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -145,6 +183,9 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -162,6 +203,9 @@ services:
         condition: service_healthy
     command: >
       bash -c "uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:
@@ -170,6 +214,9 @@ services:
 
   frontend:
     restart: always
+    networks:
+      - study-partner-network
+
     deploy:
       resources:
         limits:

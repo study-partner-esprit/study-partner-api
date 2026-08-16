@@ -5,6 +5,13 @@ const { Task } = require('../models');
 
 const router = express.Router();
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 // Validation schemas
 const createTaskSchema = Joi.object({
   title: Joi.string().required(),
@@ -119,7 +126,7 @@ router.put('/:taskId', async (req, res) => {
           metadata: { taskId: task._id.toString(), title: task.title }
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
       // Progress quests
@@ -129,7 +136,7 @@ router.put('/:taskId', async (req, res) => {
           action: 'task_complete'
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
     } catch (xpErr) {

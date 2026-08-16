@@ -8,6 +8,13 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -177,7 +184,7 @@ router.post(
               metadata: { courseId: course._id.toString(), title: course.title }
             },
             {
-              headers: { Authorization: req.headers.authorization }
+              headers: buildInternalHeaders(req.headers.authorization)
             }
           );
           // Progress quests
@@ -187,7 +194,7 @@ router.post(
               action: 'course_upload'
             },
             {
-              headers: { Authorization: req.headers.authorization }
+              headers: buildInternalHeaders(req.headers.authorization)
             }
           );
         } catch (xpErr) {
@@ -490,7 +497,7 @@ router.post('/manual', async (req, res) => {
           metadata: { courseId: course._id.toString(), title: course.title, manual: true }
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
     } catch (xpErr) {

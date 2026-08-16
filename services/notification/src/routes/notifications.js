@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const Notification = require('../models/Notification');
 const { isEmailEnabled, sendNotificationEmail } = require('../services/emailService');
+const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
@@ -37,15 +38,13 @@ const createSchema = Joi.object({
   data: Joi.object().optional()
 });
 
-// ── GET /api/v1/notifications?userId=...&status=...&limit=... ──
+// ── GET /api/v1/notifications?status=...&limit=... ──
+// Scoped to the authenticated user (req.user.userId); the userId query param is ignored.
 router.get('/', async (req, res, next) => {
   try {
-    const { userId, status, limit = 50, offset = 0 } = req.query;
+    const { status, limit = 50, offset = 0 } = req.query;
     const dbTimeoutMs = Number(process.env.NOTIFICATION_DB_TIMEOUT_MS || 8000);
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId query parameter is required' });
-    }
+    const userId = req.user.userId;
 
     const filter = { userId };
     if (status) filter.status = status;
@@ -71,7 +70,8 @@ router.get('/', async (req, res, next) => {
 });
 
 // ── POST /api/v1/notifications/broadcast — fire WS only, no DB storage ──
-router.post('/broadcast', async (req, res, next) => {
+// Internal services only (or admins).
+router.post('/broadcast', requireInternalOrAdmin, async (req, res, next) => {
   try {
     const { userIds, payload } = req.body;
     if (!Array.isArray(userIds) || !payload) {
@@ -87,8 +87,8 @@ router.post('/broadcast', async (req, res, next) => {
   }
 });
 
-// ── POST /api/v1/notifications ──
-router.post('/', async (req, res, next) => {
+// ── POST /api/v1/notifications — internal services only (or admins) ──
+router.post('/', requireInternalOrAdmin, async (req, res, next) => {
   try {
     const { error, value } = createSchema.validate(req.body);
     if (error) {
@@ -130,8 +130,12 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.post('/email/test', async (req, res, next) => {
+router.post('/email/test', requireInternalOrAdmin, async (req, res, next) => {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Email test disabled in production' });
+    }
+
     const payload = {
       type: req.body?.type || 'system',
       title: req.body?.title || 'Test Email Notification',
@@ -146,11 +150,11 @@ router.post('/email/test', async (req, res, next) => {
   }
 });
 
-// ── PATCH /api/v1/notifications/:id/read ──
+// ── PATCH /api/v1/notifications/:id/read — owner-only ──
 router.patch('/:id/read', async (req, res, next) => {
   try {
     const notification = await Notification.findByIdAndUpdate(
-      req.params.id,
+      { _id: req.params.id, userId: req.user.userId },
       { status: 'read', readAt: new Date() },
       { new: true }
     );
@@ -165,13 +169,10 @@ router.patch('/:id/read', async (req, res, next) => {
   }
 });
 
-// ── PATCH /api/v1/notifications/read-all?userId=... ──
+// ── PATCH /api/v1/notifications/read-all — scoped to authenticated user ──
 router.patch('/read-all', async (req, res, next) => {
   try {
-    const { userId } = req.query;
-    if (!userId) {
-      return res.status(400).json({ error: 'userId query parameter is required' });
-    }
+    const userId = req.user.userId;
 
     const result = await Notification.updateMany(
       { userId, status: 'unread' },
@@ -184,11 +185,11 @@ router.patch('/read-all', async (req, res, next) => {
   }
 });
 
-// ── DELETE /api/v1/notifications/:id ──
+// ── DELETE /api/v1/notifications/:id — owner-only ──
 router.delete('/:id', async (req, res, next) => {
   try {
     const notification = await Notification.findByIdAndUpdate(
-      req.params.id,
+      { _id: req.params.id, userId: req.user.userId },
       { status: 'dismissed' },
       { new: true }
     );
