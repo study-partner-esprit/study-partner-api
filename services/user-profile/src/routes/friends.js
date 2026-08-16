@@ -283,6 +283,7 @@ router.put('/request/:friendshipId/accept', async (req, res) => {
           `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
           {
             action: 'friend_added',
+            userId: String(uid),
             metadata: { friendshipId: friendship._id.toString() }
           },
           { headers: buildInternalHeaders(req.headers.authorization) }
