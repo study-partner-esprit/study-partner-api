@@ -5,6 +5,13 @@ const axios = require('axios');
 
 const router = express.Router();
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 // Configure multer for image uploads - use memoryStorage so we can store image data in DB
 const storage = multer.memoryStorage();
 
@@ -101,7 +108,7 @@ router.post('/', upload.single('image'), async (req, res) => {
         auth: !!req.headers.authorization
       });
       await axios.post(`${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`, payload, {
-        headers: { Authorization: req.headers.authorization }
+        headers: buildInternalHeaders(req.headers.authorization)
       });
     } catch (xpErr) {
       const respData = xpErr && xpErr.response ? xpErr.response.data : null;

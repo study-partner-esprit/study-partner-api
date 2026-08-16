@@ -42,11 +42,15 @@ const getTransporter = () => {
   }
 };
 
-const resolveUserEmail = async ({ req, metadata = {} }) => {
-  if (metadata.email) {
-    return metadata.email;
-  }
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
+const resolveUserEmail = async ({ req }) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return null;
@@ -74,17 +78,29 @@ const buildEmailTemplate = ({ title, message, type, metadata = {} }) => {
   };
 
   const emoji = emojiByType[type] || '🔔';
-  const action = metadata.actionUrl
-    ? `<p style="margin-top:24px"><a href="${metadata.actionUrl}" style="background:#ff4655;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700">Open Study Partner</a></p>`
+  const rawActionUrl = metadata.actionUrl;
+  let actionUrl = null;
+  if (typeof rawActionUrl === 'string') {
+    try {
+      const parsed = new URL(rawActionUrl);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        actionUrl = parsed.toString();
+      }
+    } catch {
+      actionUrl = null;
+    }
+  }
+  const action = actionUrl
+    ? `<p style="margin-top:24px"><a href="${escapeHtml(actionUrl)}" style="background:#ff4655;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700">Open Study Partner</a></p>`
     : '';
 
   return {
-    subject: `${emoji} ${title}`,
+    subject: `${emoji} ${escapeHtml(title)}`,
     html: `
       <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f7fafc;padding:24px;">
         <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;">
-          <h2 style="margin:0 0 10px;color:#0f172a;">${emoji} ${title}</h2>
-          <p style="margin:0;color:#334155;line-height:1.6;">${message}</p>
+          <h2 style="margin:0 0 10px;color:#0f172a;">${emoji} ${escapeHtml(title)}</h2>
+          <p style="margin:0;color:#334155;line-height:1.6;">${escapeHtml(message)}</p>
           ${action}
           <p style="margin-top:24px;color:#64748b;font-size:12px;">This email was sent by Study Partner notifications.</p>
         </div>
@@ -97,7 +113,7 @@ const sendNotificationEmail = async ({ req, notification }) => {
   const t = getTransporter();
   if (!t) return { sent: false, reason: 'email_disabled' };
 
-  const to = await resolveUserEmail({ req, metadata: notification.metadata || {} });
+  const to = await resolveUserEmail({ req });
   if (!to) return { sent: false, reason: 'email_not_available' };
 
   const template = buildEmailTemplate({

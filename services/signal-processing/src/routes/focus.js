@@ -6,6 +6,13 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 // Validation schemas
 const startSessionSchema = Joi.object({
   studySessionId: Joi.string().optional()
@@ -152,7 +159,7 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
           metadata: { sessionId: session._id.toString(), focusScore: session.focusScore }
         },
         {
-          headers: { Authorization: req.headers.authorization }
+          headers: buildInternalHeaders(req.headers.authorization)
         }
       );
     } catch (xpErr) {
@@ -170,7 +177,7 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
         action: 'focus_session'
       },
       {
-        headers: { Authorization: req.headers.authorization }
+        headers: buildInternalHeaders(req.headers.authorization)
       }
     );
   } catch (questErr) {

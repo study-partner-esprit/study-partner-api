@@ -9,10 +9,11 @@ const router = express.Router();
 const characterManager = require('./character_manager');
 const abilityExecutor = require('./ability_executor');
 const { CharacterPurchase } = require('./models');
-const { authenticate } = require('@study-partner/shared/auth');
+const { authenticate, requireInternalOrAdmin, requireRole } = require('@study-partner/shared/auth');
 const logger = require('@study-partner/shared/logger');
 
 const auth = authenticate;
+const requireAdmin = requireRole('admin');
 const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -656,7 +657,7 @@ router.get('/user/unlock-progress', auth, async (req, res) => {
  * POST /api/user/unlock-progress/sync
  * Sync unlock progress from explicit metrics payload (internal orchestration)
  */
-router.post('/user/unlock-progress/sync', auth, async (req, res) => {
+router.post('/user/unlock-progress/sync', auth, requireInternalOrAdmin, async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
     const metrics = req.body?.metrics || {};
@@ -686,10 +687,10 @@ router.post('/user/unlock-progress/sync', auth, async (req, res) => {
 
 /**
  * POST /api/abilities/trigger
- * Trigger ability effect execution (requires auth)
+ * Trigger ability effect execution (requires internal auth)
  * Called after study session completion
  */
-router.post('/abilities/trigger', auth, async (req, res) => {
+router.post('/abilities/trigger', auth, requireInternalOrAdmin, async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
     const { characterId, sessionData, baseXp } = req.body;
@@ -796,16 +797,8 @@ router.get('/user/ability-events', auth, async (req, res) => {
  * POST /api/admin/characters
  * Create new character (admin only)
  */
-router.post('/admin/characters', auth, async (req, res) => {
+router.post('/admin/characters', auth, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin (you would implement proper admin check)
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions'
-      });
-    }
-
     const characterData = req.body;
     const character = await characterManager.createCharacter(characterData);
 
@@ -828,16 +821,8 @@ router.post('/admin/characters', auth, async (req, res) => {
  * PUT /api/admin/characters/:id
  * Update character (admin only)
  */
-router.put('/admin/characters/:id', auth, async (req, res) => {
+router.put('/admin/characters/:id', auth, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions'
-      });
-    }
-
     const { id } = req.params;
     const updateData = req.body;
 
@@ -862,16 +847,8 @@ router.put('/admin/characters/:id', auth, async (req, res) => {
  * POST /api/admin/abilities
  * Create new ability (admin only)
  */
-router.post('/admin/abilities', auth, async (req, res) => {
+router.post('/admin/abilities', auth, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions'
-      });
-    }
-
     const abilityData = req.body;
     const ability = await characterManager.createAbility(abilityData);
 

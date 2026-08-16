@@ -8,6 +8,13 @@ const router = express.Router();
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
 
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
+
 // Helper: send notification
 async function notify(userId, type, title, message, metadata, authHeader) {
   try {
@@ -20,7 +27,7 @@ async function notify(userId, type, title, message, metadata, authHeader) {
         message,
         metadata
       },
-      { headers: { Authorization: authHeader } }
+      { headers: buildInternalHeaders(authHeader) }
     );
   } catch (err) {
     console.warn('Notification send failed:', err.message);
@@ -278,7 +285,7 @@ router.put('/request/:friendshipId/accept', async (req, res) => {
             action: 'friend_added',
             metadata: { friendshipId: friendship._id.toString() }
           },
-          { headers: { Authorization: req.headers.authorization } }
+          { headers: buildInternalHeaders(req.headers.authorization) }
         );
       }
     } catch (xpErr) {

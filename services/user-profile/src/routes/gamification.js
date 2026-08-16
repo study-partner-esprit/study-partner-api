@@ -4,11 +4,19 @@ const axios = require('axios');
 const Gamification = require('../models/Gamification');
 const Friendship = require('../models/Friendship');
 const { awardKnowledgePoints } = require('../services/rankingService');
+const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
 const NOTIFICATION_SERVICE_URL =
   process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
+
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+const buildInternalHeaders = (authorization) => ({
+  ...(authorization ? { Authorization: authorization } : {}),
+  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
+});
 
 const isChallengeCompletionAction = (action = '') => {
   const normalizedAction = String(action || '')
@@ -85,8 +93,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Award XP
-router.post('/award-xp', async (req, res) => {
+// Award XP (internal orchestration or admin only)
+router.post('/award-xp', requireInternalOrAdmin, async (req, res) => {
   try {
     console.info('award-xp endpoint received request', {
       body: req.body,
@@ -171,7 +179,7 @@ router.post('/award-xp', async (req, res) => {
       for (const notif of notifications) {
         axios
           .post(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications`, notif, {
-            headers: { Authorization: req.headers.authorization }
+            headers: buildInternalHeaders(req.headers.authorization)
           })
           .catch((err) => console.warn('Notification send failed:', err.message));
       }

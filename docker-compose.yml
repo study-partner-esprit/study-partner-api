@@ -7,7 +7,7 @@ services:
     container_name: api-gateway
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       - NODE_ENV=development
       - PORT=3000
@@ -50,7 +50,7 @@ services:
     container_name: auth-service
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '127.0.0.1:3001:3001'
     environment:
       - NODE_ENV=development
       - PORT=3001
@@ -87,12 +87,13 @@ services:
     container_name: user-profile-service
     restart: unless-stopped
     ports:
-      - '3002:3002'
+      - '127.0.0.1:3002:3002'
     environment:
       - NODE_ENV=development
       - PORT=3002
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
     healthcheck:
@@ -112,12 +113,13 @@ services:
     container_name: study-service
     restart: unless-stopped
     ports:
-      - '3003:3003'
+      - '127.0.0.1:3003:3003'
     environment:
       - NODE_ENV=development
       - PORT=3003
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - AI_SERVICE_URL=http://ai-service:8000
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
       - NOTIFICATION_SERVICE_URL=http://notification-service:3007
@@ -138,7 +140,7 @@ services:
     container_name: ai-orchestrator-service
     restart: unless-stopped
     ports:
-      - '3004:3004'
+      - '127.0.0.1:3004:3004'
     environment:
       - NODE_ENV=development
       - PORT=3004
@@ -162,11 +164,12 @@ services:
     container_name: signal-processing-service
     restart: unless-stopped
     ports:
-      - '3005:3005'
+      - '127.0.0.1:3005:3005'
     environment:
       - NODE_ENV=development
       - PORT=3005
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3005/api/v1/health']
@@ -185,7 +188,7 @@ services:
     container_name: analytics-service
     restart: unless-stopped
     ports:
-      - '3006:3006'
+      - '127.0.0.1:3006:3006'
     environment:
       - NODE_ENV=development
       - PORT=3006
@@ -209,7 +212,7 @@ services:
     container_name: redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 30s
@@ -230,12 +233,15 @@ services:
       - NODE_ENV=development
       - PORT=3007
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - NOTIFICATION_DB_TIMEOUT_MS=${NOTIFICATION_DB_TIMEOUT_MS:-8000}
       - MONGO_SERVER_SELECTION_TIMEOUT_MS=${MONGO_SERVER_SELECTION_TIMEOUT_MS:-5000}
       - MONGO_CONNECT_TIMEOUT_MS=${MONGO_CONNECT_TIMEOUT_MS:-5000}
       - MONGO_SOCKET_TIMEOUT_MS=${MONGO_SOCKET_TIMEOUT_MS:-10000}
       - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
+      - STUDY_SERVICE_URL=http://study-service:3003
       - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -259,7 +265,7 @@ services:
     container_name: ai-service
     restart: unless-stopped
     ports:
-      - '8000:8000'
+      - '127.0.0.1:8000:8000'
     environment:
       - PYTHONPATH=/app:/app/agents/evaluator
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}

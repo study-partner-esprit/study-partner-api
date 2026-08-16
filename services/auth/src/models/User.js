@@ -181,11 +181,17 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Remove password from JSON representation
+// Remove sensitive fields from JSON representation
 userSchema.methods.toJSON = function () {
   const user = this.toObject();
   delete user.password;
   delete user.refreshTokens;
+  delete user.verificationToken;
+  delete user.verificationExpires;
+  delete user.verificationOtp;
+  delete user.verificationOtpExpires;
+  delete user.resetPasswordToken;
+  delete user.resetPasswordExpires;
   return user;
 };
 

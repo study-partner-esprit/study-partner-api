@@ -12,6 +12,7 @@ const {
 } = require('./websocket-handlers/voice-handler');
 const { joinParticipant, leaveParticipant } = require('./services/voiceService');
 const { normalizeSignalPayload } = require('./utils/rtc-signaling');
+const { verifyToken } = require('@study-partner/shared/auth');
 
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
@@ -22,6 +23,7 @@ const logger = {
 const PORT = process.env.PORT || 3007;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
 const USER_PROFILE_URL = process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+const STUDY_SERVICE_URL = process.env.STUDY_SERVICE_URL || 'http://study-service:3003';
 
 // ── WebSocket client registry ───────────────────────
 // Map<userId, Set<WebSocket>>
@@ -97,6 +99,47 @@ async function updateOnlineStatus(userId, status) {
   }
 }
 
+// Authenticate a WebSocket upgrade: requires a valid JWT whose userId matches the
+// requested userId. Prevents impersonating another user via the userId query param.
+function authenticateWsRequest(req, requestedUserId) {
+  if (!requestedUserId) return 'userId required';
+  if (!req.url) return 'token required';
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const token = url.searchParams.get('token');
+  if (!token) return 'token required';
+
+  let payload;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    return 'Unauthorized';
+  }
+
+  if (String(payload.userId) !== String(requestedUserId)) {
+    return 'Unauthorized';
+  }
+  return null;
+}
+
+// Fail-closed membership check for realtime sessions: the connecting user must be a
+// participant of the requested team session in the study service.
+async function verifySessionMembership(token, userId, sessionId) {
+  try {
+    const resp = await axios.get(
+      `${STUDY_SERVICE_URL}/api/v1/sessions/team/${sessionId}/participants`,
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+    );
+    const participants = resp.data?.participants || [];
+    return participants.some((p) => String(p.userId) === String(userId));
+  } catch (err) {
+    logger.warn(
+      `Failed to verify session membership for ${userId} in ${sessionId}: ${err.message}`
+    );
+    return false;
+  }
+}
+
 async function startServer() {
   try {
     await mongoose.connect(MONGODB_URI, {
@@ -133,12 +176,13 @@ async function startServer() {
     });
 
     wssNotifications.on('connection', (ws, req) => {
-      // Expect ?userId=xxx on connect
+      // Expect ?userId=xxx&token=JWT on connect
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const userId = url.searchParams.get('userId');
 
-      if (!userId) {
-        ws.close(4001, 'userId required');
+      const authError = authenticateWsRequest(req, userId);
+      if (authError) {
+        ws.close(4401, authError);
         return;
       }
 
@@ -199,9 +243,21 @@ async function startServer() {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const userId = url.searchParams.get('userId');
       const sessionId = url.searchParams.get('sessionId');
+      const token = url.searchParams.get('token');
 
-      if (!userId || !sessionId) {
-        ws.close(4001, 'userId and sessionId required');
+      const authError = authenticateWsRequest(req, userId);
+      if (authError) {
+        ws.close(4401, authError);
+        return;
+      }
+
+      if (!sessionId) {
+        ws.close(4001, 'sessionId required');
+        return;
+      }
+
+      if (!(await verifySessionMembership(token, userId, sessionId))) {
+        ws.close(4403, 'Not a member of this session');
         return;
       }
 

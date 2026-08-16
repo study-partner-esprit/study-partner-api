@@ -19,6 +19,19 @@ for (const key of REQUIRED_ENV) {
     process.exit(1);
   }
 }
+const INSECURE_DEFAULTS = [
+  'your-super-secret-jwt-key-change-in-production',
+  'your-secret-key',
+  'change-me',
+  'replace_with_a_strong_secret',
+  'change-this-refresh-secret'
+];
+if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
+  logger.error(
+    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
+  );
+  process.exit(1);
+}
 
 const app = express();
 

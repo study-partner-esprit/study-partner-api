@@ -22,11 +22,18 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
-if (
-  process.env.NODE_ENV === 'production' &&
-  process.env.JWT_SECRET?.includes('change-in-production')
-) {
-  logger.error('[FATAL] Insecure default JWT_SECRET detected in production');
+const INSECURE_DEFAULTS = [
+  'your-super-secret-jwt-key-change-in-production',
+  'your-secret-key',
+  'change-me',
+  'replace_with_a_strong_secret',
+  'change-this-refresh-secret'
+];
+
+if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
+  logger.error(
+    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
+  );
   process.exit(1);
 }
 
