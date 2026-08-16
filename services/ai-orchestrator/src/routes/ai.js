@@ -5,6 +5,16 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
+// Middleware: the :userId path param must match the authenticated user (admins exempt).
+const requireOwnedUser = (req, res, next) => {
+  const targetUserId = req.params.userId;
+  const isAdmin = req.user?.role === 'admin' || req.user?.isAdmin === true;
+  if (String(req.user?.userId) === String(targetUserId) || isAdmin) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Forbidden: cannot access another user\'s data' });
+};
+
 // Validation schemas
 const ingestCourseSchema = Joi.object({
   courseData: Joi.string().required(),
@@ -627,7 +637,7 @@ router.post('/coach', tierGate('vip_plus', 'trial'), async (req, res) => {
 });
 
 // Coach History - Forwards request to Python AI service
-router.get('/coach/history/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/coach/history/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   const { userId } = req.params;
   const { limit = 20 } = req.query;
 
@@ -691,7 +701,7 @@ router.post('/signals/analyze-frame', tierGate('vip_plus', 'trial'), async (req,
 });
 
 // Get current signals for a user
-router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -711,7 +721,7 @@ router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), async (req
 });
 
 // Get signal history for a user
-router.get('/signals/history/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/signals/history/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -740,7 +750,7 @@ router.post('/signals/process', tierGate('vip_plus', 'trial'), async (req, res) 
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/process`, {
-      user_id: req.body.user_id || req.user?.userId
+      user_id: req.user?.userId
     });
     res.json(response.data);
   } catch (err) {
@@ -754,7 +764,7 @@ router.post('/signals/process', tierGate('vip_plus', 'trial'), async (req, res) 
 });
 
 // Get latest signal results for a user
-router.get('/signals/latest/:userId', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/signals/latest/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -784,8 +794,8 @@ router.post('/search/ask', tierGate('vip', 'vip_plus', 'trial'), async (req, res
     question: (req.body?.question || req.body?.query || '').toString().trim()
   };
 
-  if (req.body?.user_id || req.body?.userId || req.user?.userId) {
-    normalizedBody.user_id = req.body?.user_id || req.body?.userId || req.user?.userId;
+  if (req.user?.userId) {
+    normalizedBody.user_id = req.user.userId;
   }
 
   if (req.body?.session_id) {
@@ -827,7 +837,7 @@ router.post('/search/ask', tierGate('vip', 'vip_plus', 'trial'), async (req, res
 });
 
 // Get search history for a user
-router.get('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+router.get('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -850,7 +860,7 @@ router.get('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), asyn
 });
 
 // Clear search history for a user
-router.delete('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+router.delete('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -877,7 +887,10 @@ router.post('/reviews/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
-    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/reviews/schedule`, req.body);
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/reviews/schedule`, {
+      ...req.body,
+      user_id: req.user?.userId
+    });
     res.json(response.data);
   } catch (err) {
     console.error('Schedule review proxy failed:', err.message);
@@ -896,7 +909,7 @@ router.post('/reviews/record-result', tierGate('vip', 'vip_plus', 'trial'), asyn
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const normalizedPayload = {
-      user_id: req.body?.user_id || req.body?.userId || req.user?.userId,
+      user_id: req.user?.userId,
       review_id:
         req.body?.review_id ||
         req.body?.reviewId ||
@@ -932,7 +945,7 @@ router.post('/reviews/record-result', tierGate('vip', 'vip_plus', 'trial'), asyn
 });
 
 // Get pending reviews for a user
-router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -955,7 +968,7 @@ router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), asy
 });
 
 // Get review stats for a user
-router.get('/reviews/stats/:userId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
+router.get('/reviews/stats/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';

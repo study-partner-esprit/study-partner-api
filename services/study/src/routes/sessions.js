@@ -1,7 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
-const { generateToken } = require('@study-partner/shared/auth');
 const { StudySession } = require('../models');
 
 const router = express.Router();
@@ -84,6 +83,12 @@ const buildInternalHeaders = (authorization) => ({
   ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
 });
 
+const isTeamSessionMember = (session, userId) => {
+  if (!session || !userId) return false;
+  if (String(session.userId) === String(userId)) return true;
+  return session.participants?.some((p) => String(p.userId) === String(userId) && !p.leftAt);
+};
+
 const trackAnalyticsEvent = async ({ authorization, eventType, metadata = {} }) => {
   if (!authorization) return null;
 
@@ -103,12 +108,13 @@ const trackAnalyticsEvent = async ({ authorization, eventType, metadata = {} }) 
   }
 };
 
-const fetchGamificationProfile = async (authorization) => {
+const fetchGamificationProfile = async ({ authorization, userId = null } = {}) => {
   if (!authorization) return null;
 
   try {
     const response = await axios.get(`${USER_PROFILE_URL}/api/v1/users/gamification`, {
-      headers: { Authorization: authorization }
+      params: userId ? { userId } : {},
+      headers: buildInternalHeaders(authorization)
     });
 
     return response?.data || null;
@@ -118,29 +124,13 @@ const fetchGamificationProfile = async (authorization) => {
   }
 };
 
-const buildDelegatedAuthorizationHeader = (targetUserId, fallbackAuthorization) => {
-  if (!targetUserId) return fallbackAuthorization;
-
-  try {
-    const delegatedToken = generateToken({
-      userId: String(targetUserId),
-      role: 'student',
-      delegatedBy: 'study-service'
-    });
-
-    return `Bearer ${delegatedToken}`;
-  } catch (error) {
-    console.warn('[Team Session] Delegated token generation failed:', error.message);
-    return fallbackAuthorization;
-  }
-};
-
-const getSelectedCharacterForAuthorization = async (authorization) => {
+const getSelectedCharacterForAuthorization = async ({ authorization, userId = null } = {}) => {
   if (!authorization) return null;
 
   try {
     const response = await axios.get(`${USER_PROFILE_URL}/api/v1/user/character`, {
-      headers: { Authorization: authorization }
+      params: userId ? { userId } : {},
+      headers: buildInternalHeaders(authorization)
     });
 
     return response?.data?.data || null;
@@ -166,6 +156,7 @@ const buildAbilityBonusPayload = (abilityResult) => {
 
 const executeCharacterAbilityForReward = async ({
   authorization,
+  userId = null,
   characterId,
   sessionData,
   baseXP
@@ -176,6 +167,7 @@ const executeCharacterAbilityForReward = async ({
     const response = await axios.post(
       `${USER_PROFILE_URL}/api/v1/abilities/trigger`,
       {
+        ...(userId ? { userId } : {}),
         characterId,
         sessionData,
         baseXp: baseXP
@@ -194,13 +186,14 @@ const executeCharacterAbilityForReward = async ({
 
 const calculateCharacterAdjustedXP = async ({
   authorization,
+  userId = null,
   baseXP,
   sessionData,
   selectedCharacterId = null,
   fallbackMultiplier = 1
 }) => {
   const normalizedBaseXP = toSafeInteger(baseXP, 0);
-  const selectedCharacter = await getSelectedCharacterForAuthorization(authorization);
+  const selectedCharacter = await getSelectedCharacterForAuthorization({ authorization, userId });
   const activeCharacterId =
     selectedCharacter?.character_id?._id || selectedCharacter?.character_id || null;
   const characterId = selectedCharacterId || activeCharacterId;
@@ -216,6 +209,7 @@ const calculateCharacterAdjustedXP = async ({
 
   const abilityResult = await executeCharacterAbilityForReward({
     authorization,
+    userId,
     characterId: String(characterId),
     sessionData,
     baseXP: normalizedBaseXP
@@ -246,6 +240,7 @@ const calculateCharacterAdjustedXP = async ({
 
 const calculateSessionXPWithCharacter = async ({
   authorization,
+  userId = null,
   sessionId,
   sessionType,
   duration,
@@ -255,6 +250,7 @@ const calculateSessionXPWithCharacter = async ({
 }) => {
   return calculateCharacterAdjustedXP({
     authorization,
+    userId,
     baseXP,
     selectedCharacterId,
     sessionData: {
@@ -270,6 +266,7 @@ const calculateSessionXPWithCharacter = async ({
 
 const calculateChallengeXPWithCharacter = async ({
   authorization,
+  userId = null,
   sessionId,
   challengeId,
   difficulty,
@@ -282,6 +279,7 @@ const calculateChallengeXPWithCharacter = async ({
 
   return calculateCharacterAdjustedXP({
     authorization,
+    userId,
     baseXP: adjustedBaseXP,
     selectedCharacterId,
     sessionData: {
@@ -297,12 +295,14 @@ const calculateChallengeXPWithCharacter = async ({
 
 const calculateSocialXPWithCharacter = async ({
   authorization,
+  userId = null,
   sessionId,
   activityType,
   baseXP
 }) => {
   return calculateCharacterAdjustedXP({
     authorization,
+    userId,
     baseXP,
     sessionData: {
       session_id: sessionId,
@@ -314,13 +314,16 @@ const calculateSocialXPWithCharacter = async ({
   });
 };
 
-const syncUnlockProgressFromMetrics = async ({ authorization, metrics }) => {
+const syncUnlockProgressFromMetrics = async ({ authorization, userId = null, metrics }) => {
   if (!authorization) return null;
 
   try {
     const response = await axios.post(
       `${USER_PROFILE_URL}/api/v1/user/unlock-progress/sync`,
-      { metrics: metrics || {} },
+      {
+        ...(userId ? { userId } : {}),
+        metrics: metrics || {}
+      },
       {
         headers: buildInternalHeaders(authorization)
       }
@@ -428,7 +431,7 @@ async function awardSessionCompletionWithCharacterEffects({ _userId, session, au
   );
 
   const awardData = awardResponse?.data || {};
-  const gamificationProfile = await fetchGamificationProfile(authorization);
+  const gamificationProfile = await fetchGamificationProfile({ authorization });
   let unlockSync = null;
 
   try {
@@ -1485,6 +1488,7 @@ router.post('/team/:sessionId/leave', async (req, res) => {
 // POST /team/:sessionId/invite — Invite friend
 router.post('/team/:sessionId/invite', async (req, res) => {
   try {
+    const userId = req.user.userId;
     const session = await StudySession.findOne({
       _id: req.params.sessionId,
       type: 'team',
@@ -1493,6 +1497,10 @@ router.post('/team/:sessionId/invite', async (req, res) => {
     if (!session) {
       console.warn(`[Team Invite] Session not found: ${req.params.sessionId}`);
       return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (!isTeamSessionMember(session, userId)) {
+      return res.status(403).json({ error: 'Only session members can invite others' });
     }
 
     const { friendId } = req.body;
@@ -1605,8 +1613,13 @@ router.put('/team/:sessionId/start', async (req, res) => {
 // GET /team/:sessionId/participants — List participants
 router.get('/team/:sessionId/participants', async (req, res) => {
   try {
+    const userId = req.user.userId;
     const session = await StudySession.findOne({ _id: req.params.sessionId, type: 'team' });
     if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    if (!isTeamSessionMember(session, userId)) {
+      return res.status(403).json({ error: 'Not a member of this session' });
+    }
 
     const participantUserIds = Array.from(
       new Set(session.participants.map((p) => String(p.userId)).filter(Boolean))
@@ -1616,12 +1629,10 @@ router.get('/team/:sessionId/participants', async (req, res) => {
     if (participantUserIds.length > 0) {
       const characterEntries = await Promise.all(
         participantUserIds.map(async (participantUserId) => {
-          const participantAuthorization = buildDelegatedAuthorizationHeader(
-            participantUserId,
-            req.headers.authorization
-          );
-          const userCharacter =
-            await getSelectedCharacterForAuthorization(participantAuthorization);
+          const userCharacter = await getSelectedCharacterForAuthorization({
+            authorization: req.headers.authorization,
+            userId: participantUserId
+          });
           return [String(participantUserId), toParticipantCharacterSummary(userCharacter)];
         })
       );
@@ -1692,10 +1703,6 @@ router.put('/team/:sessionId/end', async (req, res) => {
     const teamRewards = [];
     for (const participant of participantMap.values()) {
       const participantUserId = String(participant.userId);
-      const participantAuthorization = buildDelegatedAuthorizationHeader(
-        participantUserId,
-        req.headers.authorization
-      );
 
       try {
         const action = participant.role === 'host' ? 'team_session_host' : 'team_session';
@@ -1704,7 +1711,8 @@ router.put('/team/:sessionId/end', async (req, res) => {
 
         try {
           socialXpResult = await calculateSocialXPWithCharacter({
-            authorization: participantAuthorization,
+            authorization: req.headers.authorization,
+            userId: participantUserId,
             activityType: action,
             baseXP,
             sessionId: session._id.toString()
@@ -1722,6 +1730,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
           {
             action,
             xp_amount: computedAwardedXP,
+            userId: participantUserId,
             metadata: {
               sessionId: session._id.toString(),
               participantUserId,
@@ -1730,16 +1739,20 @@ router.put('/team/:sessionId/end', async (req, res) => {
               characterMultiplier: Number(socialXpResult?.multiplier || 1)
             }
           },
-          { headers: buildInternalHeaders(participantAuthorization) }
+          { headers: buildInternalHeaders(req.headers.authorization) }
         );
 
         const awardData = awardResponse?.data || {};
-        const gamificationProfile = await fetchGamificationProfile(participantAuthorization);
+        const gamificationProfile = await fetchGamificationProfile({
+          authorization: req.headers.authorization,
+          userId: participantUserId
+        });
         let unlockSync = null;
 
         try {
           unlockSync = await syncUnlockProgressFromMetrics({
-            authorization: participantAuthorization,
+            authorization: req.headers.authorization,
+            userId: participantUserId,
             metrics: buildUnlockMetricsFromAward({
               awardData,
               gamificationProfile
@@ -1781,7 +1794,7 @@ router.put('/team/:sessionId/end', async (req, res) => {
       }
 
       await trackAnalyticsEvent({
-        authorization: participantAuthorization,
+        authorization: req.headers.authorization,
         eventType: 'study_session_completed',
         metadata: {
           sessionId: session._id.toString(),

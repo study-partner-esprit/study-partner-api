@@ -4,7 +4,7 @@ const axios = require('axios');
 const Gamification = require('../models/Gamification');
 const Friendship = require('../models/Friendship');
 const { awardKnowledgePoints } = require('../services/rankingService');
-const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
+const { requireInternalOrAdmin, isInternalRequest } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
@@ -64,13 +64,14 @@ const XP_REWARDS = {
 const awardXpSchema = Joi.object({
   action: Joi.string().required(),
   xp_amount: Joi.number().optional(),
-  metadata: Joi.object().optional()
+  metadata: Joi.object().optional(),
+  userId: Joi.string().optional()
 });
 
 // Get gamification profile
 router.get('/', async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = isInternalRequest(req) ? req.query.userId || req.user.userId : req.user.userId;
     let profile = await Gamification.findOne({ userId });
 
     if (!profile) {
@@ -106,7 +107,7 @@ router.post('/award-xp', requireInternalOrAdmin, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const userId = req.user.userId;
+    const userId = isInternalRequest(req) ? value.userId || req.user.userId : req.user.userId;
     const xp = value.xp_amount || XP_REWARDS[value.action] || 0;
 
     if (xp === 0) {

@@ -121,6 +121,18 @@ function requireInternalOrAdmin(req, res, next) {
   return res.status(403).json({ error: 'Forbidden: admin or internal access required' });
 }
 
+/**
+ * True when the request is a trusted internal service-to-service call (matching
+ * `x-internal-secret`). Internal calls may carry an explicit target userId that
+ * differs from the JWT identity; normal user requests must never be treated as
+ * internal.
+ */
+function isInternalRequest(req) {
+  const expectedSecret = process.env.INTERNAL_API_SECRET;
+  if (!expectedSecret) return false;
+  return req.headers['x-internal-secret'] === expectedSecret;
+}
+
 module.exports = {
   UserRole,
   hashPassword,
@@ -129,5 +141,6 @@ module.exports = {
   verifyToken,
   authenticate,
   requireRole,
-  requireInternalOrAdmin
+  requireInternalOrAdmin,
+  isInternalRequest
 };

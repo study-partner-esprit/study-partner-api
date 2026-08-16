@@ -9,7 +9,7 @@ const router = express.Router();
 const characterManager = require('./character_manager');
 const abilityExecutor = require('./ability_executor');
 const { CharacterPurchase } = require('./models');
-const { authenticate, requireInternalOrAdmin, requireRole } = require('@study-partner/shared/auth');
+const { authenticate, requireInternalOrAdmin, requireRole, isInternalRequest } = require('@study-partner/shared/auth');
 const logger = require('@study-partner/shared/logger');
 
 const auth = authenticate;
@@ -517,7 +517,9 @@ router.get('/user/characters/purchases', auth, async (req, res) => {
  */
 router.get('/user/character', auth, async (req, res) => {
   try {
-    const userId = getAuthenticatedUserId(req);
+    const userId = isInternalRequest(req)
+      ? req.query.userId || getAuthenticatedUserId(req)
+      : getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -659,7 +661,9 @@ router.get('/user/unlock-progress', auth, async (req, res) => {
  */
 router.post('/user/unlock-progress/sync', auth, requireInternalOrAdmin, async (req, res) => {
   try {
-    const userId = getAuthenticatedUserId(req);
+    const userId = isInternalRequest(req)
+      ? req.body.userId || getAuthenticatedUserId(req)
+      : getAuthenticatedUserId(req);
     const metrics = req.body?.metrics || {};
 
     if (!userId) {
@@ -692,7 +696,9 @@ router.post('/user/unlock-progress/sync', auth, requireInternalOrAdmin, async (r
  */
 router.post('/abilities/trigger', auth, requireInternalOrAdmin, async (req, res) => {
   try {
-    const userId = getAuthenticatedUserId(req);
+    const userId = isInternalRequest(req)
+      ? req.body.userId || getAuthenticatedUserId(req)
+      : getAuthenticatedUserId(req);
     const { characterId, sessionData, baseXp } = req.body;
 
     if (!userId) {
