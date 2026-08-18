@@ -1,7 +1,10 @@
 const express = require('express');
 const Joi = require('joi');
-const { executeAIAgent } = require('../services/agentService');
+const axios = require('axios');
+const { checkAIServiceHealth } = require('../services/agentService');
 const { tierGate } = require('@study-partner/shared/tierGate');
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 
 const router = express.Router();
 
@@ -80,17 +83,15 @@ router.post('/ingest', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
   const { courseData, format } = req.body;
 
   try {
-    const result = await executeAIAgent('course_ingestion', {
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/courses/ingest`, {
       userId,
       courseData,
       format
-    });
+    }, { timeout: 60000 });
 
     res.json({
       message: 'Course ingested successfully',
-      courseId: result.courseId,
-      topics: result.topics,
-      metadata: result.metadata
+      ...response.data
     });
   } catch (err) {
     res.status(500).json({ error: 'Course ingestion failed', details: err.message });
@@ -120,7 +121,6 @@ router.post('/plan/create', tierGate('vip', 'vip_plus', 'trial'), async (req, re
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const USER_PROFILE_URL =
       process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
 
@@ -197,7 +197,6 @@ router.get('/plan/list', tierGate('vip', 'vip_plus', 'trial'), async (req, res) 
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(`${AI_SERVICE_URL}/api/ai/planner/plans/${userId}`);
 
@@ -224,18 +223,16 @@ router.post('/plan', async (req, res) => {
   const { courseId, deadline, hoursPerWeek } = req.body;
 
   try {
-    const result = await executeAIAgent('planner', {
-      userId,
-      courseId,
-      deadline,
-      hoursPerWeek: hoursPerWeek || 10
-    });
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/planner/create-plan`, {
+      user_id: userId,
+      goal: `Complete course ${courseId || 'general'} by ${deadline || 'flexible'}`,
+      available_time_minutes: (hoursPerWeek || 10) * 60,
+      course_id: courseId
+    }, { timeout: 120000 });
 
     res.json({
       message: 'Study plan generated',
-      planId: result.planId,
-      tasks: result.tasks,
-      timeline: result.timeline
+      ...response.data
     });
   } catch (err) {
     res.status(500).json({ error: 'Plan generation failed', details: err.message });
@@ -253,16 +250,15 @@ router.post('/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) 
   const { planId, preferences } = req.body;
 
   try {
-    const result = await executeAIAgent('scheduler', {
-      userId,
-      planId,
+    const response = await axios.post(`${AI_SERVICE_URL}/api/ai/scheduler/schedule`, {
+      user_id: userId,
+      plan_id: planId,
       preferences
-    });
+    }, { timeout: 120000 });
 
     res.json({
       message: 'Tasks scheduled',
-      schedule: result.schedule,
-      conflicts: result.conflicts
+      ...response.data
     });
   } catch (err) {
     res.status(500).json({ error: 'Scheduling failed', details: err.message });
@@ -278,7 +274,6 @@ router.post('/schedule/reschedule', tierGate('vip', 'vip_plus', 'trial'), async 
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/scheduler/reschedule`, {
       user_id: req.user.userId,
@@ -312,7 +307,6 @@ router.post('/schedule/apply-coach-action', tierGate('vip_plus', 'trial'), async
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/scheduler/apply-coach-action`, {
       user_id: req.user.userId,
@@ -341,7 +335,6 @@ router.post('/schedule/apply-coach-action', tierGate('vip_plus', 'trial'), async
 router.get('/schedule/status', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/scheduler/status/${req.user.userId}`
@@ -371,7 +364,6 @@ router.put('/schedule/optimize', tierGate('vip', 'vip_plus', 'trial'), async (re
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.put(`${AI_SERVICE_URL}/api/ai/scheduler/optimize`, {
       user_id: req.user.userId,
@@ -405,7 +397,6 @@ router.post('/evaluator/session', tierGate('vip', 'vip_plus', 'trial'), async (r
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/session`, {
       user_id: req.user.userId,
@@ -444,7 +435,6 @@ router.post('/evaluator/socratic/start', tierGate('vip', 'vip_plus', 'trial'), a
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/socratic/start`, {
       user_id: req.user.userId,
@@ -481,7 +471,6 @@ router.post('/evaluator/socratic/answer', tierGate('vip', 'vip_plus', 'trial'), 
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/evaluator/socratic/answer`, value);
 
@@ -514,7 +503,6 @@ router.post('/signals/fatigue/reset', tierGate('vip_plus', 'trial'), async (req,
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/fatigue/reset`, value);
 
@@ -537,7 +525,6 @@ router.post('/signals/fatigue/reset', tierGate('vip_plus', 'trial'), async (req,
 router.get('/vector/status/:courseId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/vector/status/${req.params.courseId}`
     );
@@ -553,7 +540,6 @@ router.get('/vector/status/:courseId', tierGate('vip', 'vip_plus', 'trial'), asy
 router.post('/vector/rebuild/:courseId', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const response = await axios.post(
       `${AI_SERVICE_URL}/api/ai/vector/rebuild/${req.params.courseId}`
     );
@@ -586,7 +572,6 @@ router.post('/coach', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     // Forward request to Python AI service
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const payload = {
       user_id: userId,
@@ -643,7 +628,6 @@ router.get('/coach/history/:userId', tierGate('vip_plus', 'trial'), requireOwned
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(`${AI_SERVICE_URL}/api/ai/coach/history/${userId}`, {
       params: { limit }
@@ -667,7 +651,6 @@ router.post('/signals/analyze-frame', tierGate('vip_plus', 'trial'), async (req,
   try {
     const axios = require('axios');
     const FormData = require('form-data');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     // Forward the raw request body as multipart form data
     const formData = new FormData();
@@ -704,7 +687,6 @@ router.post('/signals/analyze-frame', tierGate('vip_plus', 'trial'), async (req,
 router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/signals/current/${req.params.userId}`
@@ -724,7 +706,6 @@ router.get('/signals/current/:userId', tierGate('vip_plus', 'trial'), requireOwn
 router.get('/signals/history/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/signals/history/${req.params.userId}`,
@@ -747,7 +728,6 @@ router.get('/signals/history/:userId', tierGate('vip_plus', 'trial'), requireOwn
 router.post('/signals/process', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/signals/process`, {
       user_id: req.user?.userId
@@ -767,7 +747,6 @@ router.post('/signals/process', tierGate('vip_plus', 'trial'), async (req, res) 
 router.get('/signals/latest/:userId', tierGate('vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/signals/latest/${req.params.userId}`,
@@ -809,7 +788,6 @@ router.post('/search/ask', tierGate('vip', 'vip_plus', 'trial'), async (req, res
 
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/search/ask`, normalizedBody, {
       timeout: 120000
@@ -840,7 +818,6 @@ router.post('/search/ask', tierGate('vip', 'vip_plus', 'trial'), async (req, res
 router.get('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/search/history/${req.params.userId}`,
@@ -863,7 +840,6 @@ router.get('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), requ
 router.delete('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.delete(
       `${AI_SERVICE_URL}/api/ai/search/history/${req.params.userId}`
@@ -885,7 +861,6 @@ router.delete('/search/history/:userId', tierGate('vip', 'vip_plus', 'trial'), r
 router.post('/reviews/schedule', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.post(`${AI_SERVICE_URL}/api/ai/reviews/schedule`, {
       ...req.body,
@@ -906,7 +881,6 @@ router.post('/reviews/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
 router.post('/reviews/record-result', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const normalizedPayload = {
       user_id: req.user?.userId,
@@ -948,7 +922,6 @@ router.post('/reviews/record-result', tierGate('vip', 'vip_plus', 'trial'), asyn
 router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(
       `${AI_SERVICE_URL}/api/ai/reviews/pending/${req.params.userId}`,
@@ -971,7 +944,6 @@ router.get('/reviews/pending/:userId', tierGate('vip', 'vip_plus', 'trial'), req
 router.get('/reviews/stats/:userId', tierGate('vip', 'vip_plus', 'trial'), requireOwnedUser, async (req, res) => {
   try {
     const axios = require('axios');
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await axios.get(`${AI_SERVICE_URL}/api/ai/reviews/stats/${req.params.userId}`);
     res.json(response.data);

@@ -85,17 +85,56 @@ function errorHandler(err, req, res, next) {
 }
 
 /**
- * Rate limiting middleware
+ * Rate limiting middleware — Redis-backed when REDIS_URL is set, falls back to
+ * in-memory otherwise. Keys by authenticated userId when available, otherwise IP.
  * @param {number} maxRequests - Maximum requests per window
- * @param {number} windowMs - Time window in milliseconds
+ * @param {number} windowMs   - Time window in milliseconds
  */
+let _redisStore = null;
+let _redisStoreAttempted = false;
+
+function _getRedisStore() {
+  if (_redisStoreAttempted) return _redisStore || null;
+  _redisStoreAttempted = true;
+
+  const REDIS_URL = process.env.REDIS_URL;
+  if (!REDIS_URL) return null;
+
+  try {
+    const Redis = require('ioredis');
+    const RedisStore = require('rate-limit-redis');
+    const client = new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+      enableReadyCheck: true
+    });
+
+    client.on('error', () => {
+      _redisStore = null;
+    });
+
+    _redisStore = new RedisStore({
+      sendCommand: (...args) => client.call(...args),
+      prefix: 'rl:'
+    });
+
+    return _redisStore;
+  } catch {
+    return null;
+  }
+}
+
 function rateLimiter(maxRequests = 100, windowMs = 60000) {
+  const store = _getRedisStore();
   return rateLimit({
     windowMs,
     max: maxRequests,
     message: 'Too many requests, please try again later.',
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    keyGenerator: (req) => (req.user && req.user.userId) || req.ip,
+    ...(store ? { store } : {})
   });
 }
 
@@ -130,11 +169,18 @@ function healthCheck(serviceName) {
   };
 }
 
+/**
+ * Wrap an async Express route handler so thrown errors are forwarded to
+ * the Express error handler instead of becoming unhandled promise rejections.
+ */
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 module.exports = {
   corsMiddleware,
   securityMiddleware,
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck
+  healthCheck,
+  asyncHandler
 };

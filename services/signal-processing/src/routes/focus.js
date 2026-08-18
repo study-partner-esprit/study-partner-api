@@ -3,6 +3,7 @@ const Joi = require('joi');
 const axios = require('axios');
 const FocusSession = require('../models/FocusSession');
 const { tierGate } = require('@study-partner/shared/tierGate');
+const { asyncHandler } = require('@study-partner/shared/middleware');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ const updateSessionSchema = Joi.object({
 });
 
 // Start focus tracking session (VIP+ / Trial only)
-router.post('/start', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.post('/start', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const { error } = startSessionSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -48,10 +49,10 @@ router.post('/start', tierGate('vip_plus', 'trial'), async (req, res) => {
     message: 'Focus tracking started',
     sessionId: session._id
   });
-});
+}));
 
 // Add focus data point
-router.post('/:sessionId/data', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.post('/:sessionId/data', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const { error } = updateSessionSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -84,10 +85,10 @@ router.post('/:sessionId/data', tierGate('vip_plus', 'trial'), async (req, res) 
     message: 'Data point added',
     currentFocusLevel: focusLevel
   });
-});
+}));
 
 // End focus tracking session
-router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const userId = req.user.userId;
   const { sessionId } = req.params;
 
@@ -189,10 +190,10 @@ router.post('/:sessionId/end', tierGate('vip_plus', 'trial'), async (req, res) =
     focusScore: session.focusScore,
     summary: session.summary
   });
-});
+}));
 
 // Get session details
-router.get('/:sessionId', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/:sessionId', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const userId = req.user.userId;
   const { sessionId } = req.params;
 
@@ -203,10 +204,10 @@ router.get('/:sessionId', tierGate('vip_plus', 'trial'), async (req, res) => {
   }
 
   res.json({ session });
-});
+}));
 
 // Get user's recent focus sessions
-router.get('/', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const userId = req.user.userId;
   const { limit = 10 } = req.query;
 
@@ -215,10 +216,10 @@ router.get('/', tierGate('vip_plus', 'trial'), async (req, res) => {
     .limit(parseInt(limit));
 
   res.json({ sessions });
-});
+}));
 
 // Get focus statistics
-router.get('/stats/summary', tierGate('vip_plus', 'trial'), async (req, res) => {
+router.get('/stats/summary', tierGate('vip_plus', 'trial'), asyncHandler(async (req, res) => {
   const userId = req.user.userId;
   const { startDate, endDate } = req.query;
 
@@ -243,6 +244,6 @@ router.get('/stats/summary', tierGate('vip_plus', 'trial'), async (req, res) => 
     avgFocusScore: Math.round(avgFocusScore * 100) / 100,
     totalFocusTime
   });
-});
+}));
 
 module.exports = router;

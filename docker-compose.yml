@@ -18,6 +18,7 @@ services:
       - SIGNAL_PROCESSING_SERVICE_URL=http://signal-processing-service:3005
       - ANALYTICS_SERVICE_URL=http://analytics-service:3006
       - NOTIFICATION_SERVICE_URL=http://notification-service:3007
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/v1/health']
       interval: 30s
@@ -64,6 +65,7 @@ services:
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_test_placeholder}
       - APP_URL=${APP_URL:-http://localhost:5173}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_SECURE=${SMTP_SECURE:-false}
@@ -96,6 +98,7 @@ services:
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3002/api/v1/health']
       interval: 30s
@@ -123,6 +126,7 @@ services:
       - AI_SERVICE_URL=http://ai-service:8000
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
       - NOTIFICATION_SERVICE_URL=http://notification-service:3007
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3003/api/v1/health']
       interval: 30s
@@ -146,6 +150,7 @@ services:
       - PORT=3004
       - AI_SERVICE_URL=http://ai-service:8000
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3004/api/v1/health']
       interval: 30s
@@ -171,6 +176,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3005/api/v1/health']
       interval: 30s
@@ -243,6 +249,7 @@ services:
       - USER_PROFILE_SERVICE_URL=http://user-profile-service:3002
       - STUDY_SERVICE_URL=http://study-service:3003
       - AI_SERVICE_URL=http://ai-service:8000
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -270,6 +277,8 @@ services:
       - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LM_STUDIO_URL=${LM_STUDIO_URL:-http://host.docker.internal:1234/v1/chat/completions}
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-lm-studio}
       - LM_STUDIO_TIMEOUT_SECONDS=${LM_STUDIO_TIMEOUT_SECONDS:-8}

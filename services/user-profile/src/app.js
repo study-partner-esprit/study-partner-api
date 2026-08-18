@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const profileRoutes = require('./routes/profile');
 const availabilityRoutes = require('./routes/availability');
 const gamificationRoutes = require('./routes/gamification');
@@ -43,6 +44,7 @@ app.set('trust proxy', 1);
 
 // Body parsing middleware
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static directory for uploads

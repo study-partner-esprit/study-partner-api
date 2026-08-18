@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const notificationRoutes = require('./routes/notifications');
 const chatRoutes = require('./routes/chat');
 const voiceRoutes = require('./routes/voice');
@@ -38,9 +39,11 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Body parsing
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware

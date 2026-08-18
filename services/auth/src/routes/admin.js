@@ -130,7 +130,7 @@ router.delete('/users/:userId', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.userId,
-      { $set: { isActive: false } },
+      { $set: { isActive: false, refreshTokens: [] } },
       { new: true }
     );
     if (!user) {

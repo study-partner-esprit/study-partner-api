@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const stripeRoutes = require('./routes/stripe');
@@ -43,6 +44,7 @@ if (
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Stripe webhook requires raw body for signature verification.
 app.post(
@@ -53,6 +55,7 @@ app.post(
 
 // Body parsing middleware
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Shared middleware
