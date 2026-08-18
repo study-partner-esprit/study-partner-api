@@ -40,6 +40,7 @@ const analyticsEventSchema = new mongoose.Schema(
 // Index for efficient time-based queries
 analyticsEventSchema.index({ userId: 1, timestamp: -1 });
 analyticsEventSchema.index({ eventType: 1, timestamp: -1 });
+analyticsEventSchema.index({ userId: 1, eventType: 1, timestamp: -1 });
 
 const AnalyticsEvent = mongoose.model('AnalyticsEvent', analyticsEventSchema);
 

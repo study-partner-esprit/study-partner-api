@@ -429,7 +429,7 @@ router.get('/search', async (req, res) => {
 
     const query = {
       userId: { $nin: blockedIds },
-      $or: [{ nickname: { $regex: q, $options: 'i' } }, { friendCode: q.toUpperCase() }]
+      $or: [{ nickname: { $regex: '^' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }, { friendCode: q.toUpperCase() }]
     };
 
     const profiles = await UserProfile.find(query).limit(20).lean();

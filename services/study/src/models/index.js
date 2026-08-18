@@ -377,6 +377,11 @@ const studyPlanSchema = new mongoose.Schema(
   }
 );
 
+// --- Compound indexes for hot query patterns ---
+studySessionSchema.index({ userId: 1, completedAt: -1 });
+studySessionSchema.index({ userId: 1, status: 1, createdAt: -1 });
+taskSchema.index({ userId: 1, status: 1, createdAt: -1 });
+
 const StudySession = mongoose.model('StudySession', studySessionSchema);
 const Task = mongoose.model('Task', taskSchema);
 const Topic = mongoose.model('Topic', topicSchema);

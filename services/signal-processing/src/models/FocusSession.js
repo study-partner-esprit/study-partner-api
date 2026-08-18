@@ -45,6 +45,8 @@ const focusSessionSchema = new mongoose.Schema(
   }
 );
 
+focusSessionSchema.index({ userId: 1, startTime: -1 });
+
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 module.exports = FocusSession;
