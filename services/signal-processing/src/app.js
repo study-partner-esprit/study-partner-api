@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const focusRoutes = require('./routes/focus');
 const {
   corsMiddleware,
@@ -34,9 +35,11 @@ if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Body parsing middleware
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Shared middleware

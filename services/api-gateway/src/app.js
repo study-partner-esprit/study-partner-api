@@ -10,6 +10,7 @@ const {
 } = require('@study-partner/shared');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(securityMiddleware());

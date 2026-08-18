@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const UserRole = {
   STUDENT: 'student',
@@ -37,6 +38,14 @@ async function verifyPassword(password, hashedPassword) {
 }
 
 /**
+ * SHA-256 hash of a refresh token for safe storage in the DB.
+ * Raw refresh tokens are never persisted — only their hashes.
+ */
+function hashRefreshToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
  * Generate a JWT access token
  * @param {Object} payload - { userId, email, role }
  * @returns {string}
@@ -66,13 +75,22 @@ function verifyToken(token) {
 function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
+    let token;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (req.cookies && req.cookies.accessToken) {
+      token = req.cookies.accessToken;
     }
 
-    const token = authHeader.substring(7);
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
     const payload = verifyToken(token);
+
+    if (payload.isActive === false) {
+      return res.status(401).json({ error: 'Account is deactivated' });
+    }
 
     req.user = payload;
     next();
@@ -137,6 +155,7 @@ module.exports = {
   UserRole,
   hashPassword,
   verifyPassword,
+  hashRefreshToken,
   generateToken,
   verifyToken,
   authenticate,

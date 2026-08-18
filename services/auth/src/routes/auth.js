@@ -9,7 +9,7 @@ const {
   sendPasswordResetEmail,
   sendSubscriptionExpiryNotice
 } = require('../services/emailService');
-const { authenticate } = require('@study-partner/shared/auth');
+const { authenticate, hashRefreshToken } = require('@study-partner/shared/auth');
 
 // Temporary implementations until shared package is fixed
 const bcrypt = require('bcryptjs');
@@ -36,12 +36,18 @@ const generateToken = (payload) => {
 };
 
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ ...payload, jti: crypto.randomUUID() }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   });
 };
 
 const router = express.Router();
+
+// Prune expired refresh tokens from the array (called before any push)
+const pruneExpiredTokens = (tokens) => {
+  const now = new Date();
+  return (tokens || []).filter((t) => t.expiresAt && t.expiresAt > now);
+};
 
 const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
 const onboardingSchema = Joi.object({
@@ -318,12 +324,13 @@ router.post('/login', async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
-  // Generate tokens (include tier in JWT payload)
+  // Generate tokens (include tier and isActive in JWT payload)
   const token = generateToken({
     userId: user._id,
     email: user.email,
     role: user.role,
     tier: user.tier,
+    isActive: user.isActive,
     trialExpiresAt: user.trialExpiresAt
   });
   const refreshToken = generateRefreshToken({
@@ -331,18 +338,50 @@ router.post('/login', async (req, res) => {
     email: user.email,
     role: user.role,
     tier: user.tier,
+    isActive: user.isActive,
     trialExpiresAt: user.trialExpiresAt
   });
 
+  // Persist refresh token hash for rotation / revocation
+  try {
+    const decoded = jwt.decode(refreshToken);
+    user.refreshTokens = pruneExpiredTokens(user.refreshTokens);
+    user.refreshTokens.push({
+      tokenHash: hashRefreshToken(refreshToken),
+      jti: decoded.jti,
+      expiresAt: new Date(decoded.exp * 1000)
+    });
+    // Keep at most 5 active refresh tokens (prune oldest)
+    if (user.refreshTokens.length > 5) {
+      user.refreshTokens = user.refreshTokens.slice(-5);
+    }
+    await user.save();
+  } catch (err) {
+    // Token persistence is best-effort; login still succeeds if DB write fails
+    console.warn('Failed to persist refresh token:', err.message);
+  }
+
+  res.cookie('accessToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 1000, // 1 hour
+    path: '/'
+  });
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/'
+  });
   res.json({
     message: 'Login successful',
-    user: withSubscriptionMeta(user),
-    token,
-    refreshToken
+    user: withSubscriptionMeta(user)
   });
 });
 
-// Refresh token
+// Refresh token — single-use rotation with reuse detection
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
 
@@ -353,18 +392,42 @@ router.post('/refresh', async (req, res) => {
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
 
-    // Fetch fresh user data for up-to-date tier
+    // Fetch fresh user data for up-to-date tier and active state
     const user = await User.findById(decoded.userId);
-    const tier = user ? user.tier : decoded.tier || 'normal';
-    const role = user ? user.role : decoded.role || 'student';
-    const trialExpiresAt = user ? user.trialExpiresAt : decoded.trialExpiresAt;
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid refresh token' });
+    }
 
-    // Generate new tokens with current tier
+    if (user.isActive === false) {
+      return res.status(403).json({ error: 'Account is deactivated' });
+    }
+
+    const tokenHash = hashRefreshToken(refreshToken);
+    const tokenIndex = user.refreshTokens.findIndex((t) => t.tokenHash === tokenHash);
+
+    if (tokenIndex === -1) {
+      // Token reuse detected — the token was already used or never existed.
+      // Revoke ALL refresh tokens for this user to contain a potential breach.
+      user.refreshTokens = [];
+      await user.save();
+      console.warn(`Refresh token reuse detected for user ${decoded.userId} — all tokens revoked`);
+      return res.status(401).json({ error: 'Refresh token revoked' });
+    }
+
+    // Remove the used token (single-use)
+    user.refreshTokens.splice(tokenIndex, 1);
+
+    const tier = user.tier || decoded.tier || 'normal';
+    const role = user.role || decoded.role || 'student';
+    const trialExpiresAt = user.trialExpiresAt || decoded.trialExpiresAt;
+
+    // Generate new tokens with current user state
     const newToken = generateToken({
       userId: decoded.userId,
       email: decoded.email,
       role,
       tier,
+      isActive: user.isActive,
       trialExpiresAt
     });
     const newRefreshToken = generateRefreshToken({
@@ -372,15 +435,87 @@ router.post('/refresh', async (req, res) => {
       email: decoded.email,
       role,
       tier,
+      isActive: user.isActive,
       trialExpiresAt
     });
 
-    res.json({
-      token: newToken,
-      refreshToken: newRefreshToken
+    // Store the new refresh token hash
+    try {
+      const newDecoded = jwt.decode(newRefreshToken);
+      user.refreshTokens = pruneExpiredTokens(user.refreshTokens);
+      user.refreshTokens.push({
+        tokenHash: hashRefreshToken(newRefreshToken),
+        jti: newDecoded.jti,
+        expiresAt: new Date(newDecoded.exp * 1000)
+      });
+      if (user.refreshTokens.length > 5) {
+        user.refreshTokens = user.refreshTokens.slice(-5);
+      }
+    } catch (err) {
+      console.warn('Failed to persist rotated refresh token:', err.message);
+    }
+
+    await user.save();
+
+    res.cookie('accessToken', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 1000,
+      path: '/'
     });
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+    res.json({ message: 'Token refreshed' });
   } catch (error) {
-    return res.status(401).json({ error: 'Invalid refresh token' });
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+// Logout — revoke a refresh token (or all for the user)
+router.post('/logout', async (req, res) => {
+  const tokenFromBody = req.body && req.body.refreshToken;
+  const tokenFromCookie = req.cookies && req.cookies.refreshToken;
+  const refreshToken = tokenFromBody || tokenFromCookie;
+  const all = req.body && req.body.all;
+
+  if (!refreshToken) {
+    // Still clear cookies even if no token to revoke
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+    return res.status(204).send();
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      res.clearCookie('accessToken', { path: '/' });
+      res.clearCookie('refreshToken', { path: '/' });
+      return res.status(204).send();
+    }
+
+    if (all) {
+      user.refreshTokens = [];
+    } else {
+      const tokenHash = hashRefreshToken(refreshToken);
+      user.refreshTokens = (user.refreshTokens || []).filter((t) => t.tokenHash !== tokenHash);
+    }
+
+    await user.save();
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+    return res.status(204).send();
+  } catch (error) {
+    // Always succeed — logout is best-effort
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+    return res.status(204).send();
   }
 });
 

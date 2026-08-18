@@ -8,7 +8,7 @@ const logger = {
   warn: (msg) => console.warn(`[WARN] ${msg}`)
 };
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://study-partner-ai:5000';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 
 /**
  * Execute an AI agent via the Python AI service

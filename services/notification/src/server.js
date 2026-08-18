@@ -14,6 +14,16 @@ const { joinParticipant, leaveParticipant } = require('./services/voiceService')
 const { normalizeSignalPayload } = require('./utils/rtc-signaling');
 const { verifyToken } = require('@study-partner/shared/auth');
 
+function parseCookies(header) {
+  if (!header) return {};
+  const cookies = {};
+  header.split(';').forEach((c) => {
+    const [key, ...val] = c.split('=');
+    cookies[key.trim()] = decodeURIComponent(val.join('='));
+  });
+  return cookies;
+}
+
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
   error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
@@ -103,10 +113,17 @@ async function updateOnlineStatus(userId, status) {
 // requested userId. Prevents impersonating another user via the userId query param.
 function authenticateWsRequest(req, requestedUserId) {
   if (!requestedUserId) return 'userId required';
-  if (!req.url) return 'token required';
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const token = url.searchParams.get('token');
+  let token;
+  // Prefer httpOnly cookie (browser sends it automatically on same-origin WS upgrade)
+  const cookies = parseCookies(req.headers && req.headers.cookie);
+  if (cookies.accessToken) {
+    token = cookies.accessToken;
+  } else if (req.url) {
+    // Fallback: query param (for non-browser clients)
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    token = url.searchParams.get('token');
+  }
   if (!token) return 'token required';
 
   let payload;
