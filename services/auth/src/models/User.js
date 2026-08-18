@@ -111,11 +111,11 @@ const userSchema = new mongoose.Schema(
     stripeCustomerId: {
       type: String
     },
-    verificationToken: { type: String },
+    verificationToken: { type: String, index: true },
     verificationExpires: { type: Date },
     verificationOtp: { type: String },
     verificationOtpExpires: { type: Date },
-    resetPasswordToken: { type: String },
+    resetPasswordToken: { type: String, index: true },
     resetPasswordExpires: { type: Date },
     notificationPreferences: {
       type: {

@@ -83,6 +83,8 @@ questSchema.methods.incrementProgress = function (amount = 1) {
   return { changed: true, completed: false };
 };
 
+questSchema.index({ userId: 1, status: 1, completedAt: -1 });
+
 const Quest = mongoose.model('Quest', questSchema);
 
 module.exports = Quest;

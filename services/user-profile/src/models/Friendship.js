@@ -16,5 +16,7 @@ const friendshipSchema = new mongoose.Schema(
 
 // One request per pair
 friendshipSchema.index({ requester: 1, recipient: 1 }, { unique: true });
+friendshipSchema.index({ recipient: 1, status: 1 });
+friendshipSchema.index({ requester: 1, status: 1 });
 
 module.exports = mongoose.model('Friendship', friendshipSchema);

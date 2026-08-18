@@ -7,6 +7,13 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 
 const router = express.Router();
 
+// Ensure indexes on the raw calendar collection (idempotent)
+mongoose.connection.once('open', () => {
+  const cal = mongoose.connection.collection('calendar');
+  cal.createIndex({ userId: 1, startTime: 1 }, { background: true }).catch(() => {});
+  cal.createIndex({ userId: 1, taskId: 1, source: 1 }, { background: true }).catch(() => {});
+});
+
 // Validation schemas
 const createPlanSchema = Joi.object({
   goal: Joi.string().required(),

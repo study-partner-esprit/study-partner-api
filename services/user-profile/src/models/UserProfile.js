@@ -137,6 +137,8 @@ const userProfileSchema = new mongoose.Schema(
   }
 );
 
+userProfileSchema.index({ nickname: 'text' }, { default_language: 'none', collation: { locale: 'simple', strength: 2 } });
+
 const UserProfile = mongoose.model('UserProfile', userProfileSchema);
 
 module.exports = UserProfile;
