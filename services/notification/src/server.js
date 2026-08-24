@@ -13,6 +13,9 @@ const {
 const { joinParticipant, leaveParticipant } = require('./services/voiceService');
 const { normalizeSignalPayload } = require('./utils/rtc-signaling');
 const { verifyToken } = require('@study-partner/shared/auth');
+const { registerProcessHandlers } = require('@study-partner/shared/processHandlers');
+
+registerProcessHandlers('notification-service');
 
 function parseCookies(header) {
   if (!header) return {};

@@ -23,6 +23,33 @@ services:
     networks:
       - study-partner-network
 
+  # RabbitMQ — AI job bus (AI-COM-01). Plain image in prod (no management UI).
+  # No host ports: reachable only via study-partner-network.
+  rabbitmq:
+    image: rabbitmq:3
+    container_name: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-mindflow}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - study-partner-network
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+
   # Override all services for production
   api-gateway:
     restart: always
@@ -117,6 +144,14 @@ services:
     environment:
       - NODE_ENV=production
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     networks:
       - study-partner-network
 
@@ -198,8 +233,11 @@ services:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
     depends_on:
       mongodb:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     command: >
       bash -c "uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --workers 2"
@@ -225,6 +263,8 @@ services:
 
 volumes:
   mongodb_data:
+    driver: local
+  rabbitmq_data:
     driver: local
   study_uploads:
     driver: local

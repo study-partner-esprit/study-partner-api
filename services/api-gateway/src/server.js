@@ -3,6 +3,9 @@ const app = require('./app');
 const { logger } = require('@study-partner/shared');
 
 const PORT = process.env.PORT || 8000;
+const { registerProcessHandlers } = require('@study-partner/shared/processHandlers');
+
+registerProcessHandlers('api-gateway');
 
 function startServer() {
   app.listen(PORT, () => {
