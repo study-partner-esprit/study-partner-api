@@ -3,6 +3,9 @@ const app = require('./app');
 const { connectDatabase, logger } = require('@study-partner/shared');
 
 const PORT = process.env.PORT || 8003;
+const { registerProcessHandlers } = require('@study-partner/shared/processHandlers');
+
+registerProcessHandlers('study-service');
 
 async function startServer() {
   try {

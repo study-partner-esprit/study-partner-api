@@ -10,6 +10,9 @@ const logger = {
 
 const PORT = process.env.PORT || 8005;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner';
+const { registerProcessHandlers } = require('@study-partner/shared/processHandlers');
+
+registerProcessHandlers('signal-processing-service');
 
 async function startServer() {
   try {

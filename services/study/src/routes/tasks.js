@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const axios = require('axios');
 const { Task } = require('../models');
+const { asyncHandler } = require('@study-partner/shared/middleware');
 
 const router = express.Router();
 
@@ -35,154 +36,172 @@ const updateTaskSchema = Joi.object({
 });
 
 // Get all tasks
-router.get('/', async (req, res) => {
-  const userId = req.user.userId;
-  const { status, priority, topicId } = req.query;
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const { status, priority, topicId } = req.query;
 
-  const filter = { userId };
-  if (status) filter.status = status;
-  if (priority) filter.priority = priority;
-  if (topicId) filter.topicId = topicId;
+    const filter = { userId };
+    if (status) filter.status = status;
+    if (priority) filter.priority = priority;
+    if (topicId) filter.topicId = topicId;
 
-  const tasks = await Task.find(filter).sort({ createdAt: -1 });
+    const tasks = await Task.find(filter).sort({ createdAt: -1 });
 
-  res.json({ tasks });
-});
+    res.json({ tasks });
+  })
+);
 
 // Get task by ID
-router.get('/:taskId', async (req, res) => {
-  const userId = req.user.userId;
-  const { taskId } = req.params;
+router.get(
+  '/:taskId',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const { taskId } = req.params;
 
-  const task = await Task.findOne({ _id: taskId, userId });
+    const task = await Task.findOne({ _id: taskId, userId });
 
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
 
-  res.json({ task });
-});
+    res.json({ task });
+  })
+);
 
 // Create task
-router.post('/', async (req, res) => {
-  const { error } = createTaskSchema.validate(req.body);
-  if (error) {
-    return res.status(400).json({ error: error.details[0].message });
-  }
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const { error } = createTaskSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
 
-  const userId = req.user.userId;
+    const userId = req.user.userId;
 
-  const task = await Task.create({
-    userId,
-    ...req.body
-  });
+    const task = await Task.create({
+      userId,
+      ...req.body
+    });
 
-  res.status(201).json({
-    message: 'Task created',
-    task
-  });
-});
+    res.status(201).json({
+      message: 'Task created',
+      task
+    });
+  })
+);
 
 // Update task
-router.put('/:taskId', async (req, res) => {
-  const { error } = updateTaskSchema.validate(req.body);
-  if (error) {
-    return res.status(400).json({ error: error.details[0].message });
-  }
-
-  const userId = req.user.userId;
-  const { taskId } = req.params;
-
-  const task = await Task.findOne({ _id: taskId, userId });
-
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  const wasCompleted = task.status === 'completed';
-  Object.assign(task, req.body);
-
-  if (req.body.status === 'completed' && !task.completedAt) {
-    task.completedAt = new Date();
-  }
-
-  await task.save();
-
-  // Auto-award XP on task completion
-  if (req.body.status === 'completed' && !wasCompleted) {
-    try {
-      const USER_PROFILE_URL =
-        process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-      const priorityMap = {
-        low: 'task_complete_easy',
-        medium: 'task_complete_medium',
-        high: 'task_complete_hard'
-      };
-      const action = priorityMap[task.priority] || 'task_complete_medium';
-      await axios.post(
-        `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
-        {
-          action,
-          metadata: { taskId: task._id.toString(), title: task.title }
-        },
-        {
-          headers: buildInternalHeaders(req.headers.authorization)
-        }
-      );
-      // Progress quests
-      await axios.post(
-        `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
-        {
-          action: 'task_complete'
-        },
-        {
-          headers: buildInternalHeaders(req.headers.authorization)
-        }
-      );
-    } catch (xpErr) {
-      console.warn('XP/Quest award failed for task completion:', xpErr.message);
+router.put(
+  '/:taskId',
+  asyncHandler(async (req, res) => {
+    const { error } = updateTaskSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
     }
-  }
 
-  res.json({
-    message: 'Task updated',
-    task
-  });
-});
+    const userId = req.user.userId;
+    const { taskId } = req.params;
+
+    const task = await Task.findOne({ _id: taskId, userId });
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const wasCompleted = task.status === 'completed';
+    Object.assign(task, req.body);
+
+    if (req.body.status === 'completed' && !task.completedAt) {
+      task.completedAt = new Date();
+    }
+
+    await task.save();
+
+    // Auto-award XP on task completion
+    if (req.body.status === 'completed' && !wasCompleted) {
+      try {
+        const USER_PROFILE_URL =
+          process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
+        const priorityMap = {
+          low: 'task_complete_easy',
+          medium: 'task_complete_medium',
+          high: 'task_complete_hard'
+        };
+        const action = priorityMap[task.priority] || 'task_complete_medium';
+        await axios.post(
+          `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
+          {
+            action,
+            metadata: { taskId: task._id.toString(), title: task.title }
+          },
+          {
+            headers: buildInternalHeaders(req.headers.authorization)
+          }
+        );
+        // Progress quests
+        await axios.post(
+          `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
+          {
+            action: 'task_complete'
+          },
+          {
+            headers: buildInternalHeaders(req.headers.authorization)
+          }
+        );
+      } catch (xpErr) {
+        console.warn('XP/Quest award failed for task completion:', xpErr.message);
+      }
+    }
+
+    res.json({
+      message: 'Task updated',
+      task
+    });
+  })
+);
 
 // Delete task
-router.delete('/:taskId', async (req, res) => {
-  const userId = req.user.userId;
-  const { taskId } = req.params;
+router.delete(
+  '/:taskId',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const { taskId } = req.params;
 
-  const result = await Task.deleteOne({ _id: taskId, userId });
+    const result = await Task.deleteOne({ _id: taskId, userId });
 
-  if (result.deletedCount === 0) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
 
-  res.json({ message: 'Task deleted' });
-});
+    res.json({ message: 'Task deleted' });
+  })
+);
 
 // Generate tasks from planner using AI (kept for backward compatibility) (kept for backward compatibility)
 // Note: New flow should use /api/v1/study/plans/create instead
-router.post('/generate-from-planner', async (req, res) => {
-  try {
-    const { goal } = req.body;
+router.post(
+  '/generate-from-planner',
+  asyncHandler(async (req, res) => {
+    try {
+      const { goal } = req.body;
 
-    if (!goal) {
-      return res.status(400).json({ error: 'Goal is required' });
+      if (!goal) {
+        return res.status(400).json({ error: 'Goal is required' });
+      }
+
+      // Redirect to new study plans endpoint
+      res.status(410).json({
+        error: 'This endpoint is deprecated. Please use /api/v1/study/plans/create instead',
+        newEndpoint: '/api/v1/study/plans/create'
+      });
+    } catch (error) {
+      console.error('Error in deprecated endpoint:', error);
+      res.status(500).json({ error: 'Failed to generate tasks' });
     }
-
-    // Redirect to new study plans endpoint
-    res.status(410).json({
-      error: 'This endpoint is deprecated. Please use /api/v1/study/plans/create instead',
-      newEndpoint: '/api/v1/study/plans/create'
-    });
-  } catch (error) {
-    console.error('Error in deprecated endpoint:', error);
-    res.status(500).json({ error: 'Failed to generate tasks' });
-  }
-});
+  })
+);
 
 module.exports = router;

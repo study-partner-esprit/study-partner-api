@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const { Topic } = require('../models');
+const { asyncHandler } = require('@study-partner/shared/middleware');
 
 const router = express.Router();
 
@@ -21,85 +22,100 @@ const updateTopicSchema = Joi.object({
 });
 
 // Get all topics
-router.get('/', async (req, res) => {
-  const userId = req.user.userId;
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
 
-  const topics = await Topic.find({ userId }).sort({ name: 1 });
+    const topics = await Topic.find({ userId }).sort({ name: 1 });
 
-  res.json({ topics });
-});
+    res.json({ topics });
+  })
+);
 
 // Get topic by ID
-router.get('/:topicId', async (req, res) => {
-  const userId = req.user.userId;
-  const { topicId } = req.params;
+router.get(
+  '/:topicId',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const { topicId } = req.params;
 
-  const topic = await Topic.findOne({ _id: topicId, userId });
+    const topic = await Topic.findOne({ _id: topicId, userId });
 
-  if (!topic) {
-    return res.status(404).json({ error: 'Topic not found' });
-  }
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
 
-  res.json({ topic });
-});
+    res.json({ topic });
+  })
+);
 
 // Create topic
-router.post('/', async (req, res) => {
-  const { error } = createTopicSchema.validate(req.body);
-  if (error) {
-    return res.status(400).json({ error: error.details[0].message });
-  }
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const { error } = createTopicSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
 
-  const userId = req.user.userId;
+    const userId = req.user.userId;
 
-  const topic = await Topic.create({
-    userId,
-    ...req.body
-  });
+    const topic = await Topic.create({
+      userId,
+      ...req.body
+    });
 
-  res.status(201).json({
-    message: 'Topic created',
-    topic
-  });
-});
+    res.status(201).json({
+      message: 'Topic created',
+      topic
+    });
+  })
+);
 
 // Update topic
-router.put('/:topicId', async (req, res) => {
-  const { error } = updateTopicSchema.validate(req.body);
-  if (error) {
-    return res.status(400).json({ error: error.details[0].message });
-  }
+router.put(
+  '/:topicId',
+  asyncHandler(async (req, res) => {
+    const { error } = updateTopicSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
 
-  const userId = req.user.userId;
-  const { topicId } = req.params;
+    const userId = req.user.userId;
+    const { topicId } = req.params;
 
-  const topic = await Topic.findOne({ _id: topicId, userId });
+    const topic = await Topic.findOne({ _id: topicId, userId });
 
-  if (!topic) {
-    return res.status(404).json({ error: 'Topic not found' });
-  }
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
 
-  Object.assign(topic, req.body);
-  await topic.save();
+    Object.assign(topic, req.body);
+    await topic.save();
 
-  res.json({
-    message: 'Topic updated',
-    topic
-  });
-});
+    res.json({
+      message: 'Topic updated',
+      topic
+    });
+  })
+);
 
 // Delete topic
-router.delete('/:topicId', async (req, res) => {
-  const userId = req.user.userId;
-  const { topicId } = req.params;
+router.delete(
+  '/:topicId',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const { topicId } = req.params;
 
-  const result = await Topic.deleteOne({ _id: topicId, userId });
+    const result = await Topic.deleteOne({ _id: topicId, userId });
 
-  if (result.deletedCount === 0) {
-    return res.status(404).json({ error: 'Topic not found' });
-  }
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
 
-  res.json({ message: 'Topic deleted' });
-});
+    res.json({ message: 'Topic deleted' });
+  })
+);
 
 module.exports = router;

@@ -5,6 +5,7 @@ module.exports = {
   ...require('./cache'),
   ...require('./database'),
   ...require('./middleware'),
+  ...require('./processHandlers'),
   ...require('./tierGate'),
   logger
 };

@@ -151,6 +151,8 @@ services:
       - AI_SERVICE_URL=http://ai-service:8000
       - JWT_SECRET=${JWT_SECRET:-replace_with_a_strong_secret}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - MONGODB_URI=${DOCKER_MONGODB_URI:-mongodb://host.docker.internal:27017/study_partner}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-mindflow}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3004/api/v1/health']
       interval: 30s
@@ -159,6 +161,8 @@ services:
       start_period: 15s
     depends_on:
       ai-service:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # Signal Processing Service - Port 3005
@@ -226,6 +230,30 @@ services:
       retries: 3
       start_period: 10s
 
+  # RabbitMQ — AI job bus (AI-COM-01).
+  # Dev uses the -management image for the UI; prod override uses plain rabbitmq:3.
+  # Ports are bound to loopback only; the bus is otherwise internal-network-only.
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-mindflow}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-mindflow}
+    ports:
+      - '127.0.0.1:5672:5672'
+      # Management UI: dev only, loopback only. Never exposed publicly.
+      - '127.0.0.1:15672:15672'
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
   # Notification Service - Port 3007
   notification-service:
     build:
@@ -284,6 +312,10 @@ services:
       - LM_STUDIO_TIMEOUT_SECONDS=${LM_STUDIO_TIMEOUT_SECONDS:-8}
       - SEARCH_RETRIEVAL_TIMEOUT_SECONDS=${SEARCH_RETRIEVAL_TIMEOUT_SECONDS:-12}
       - SEARCH_PIPELINE_TIMEOUT_SECONDS=${SEARCH_PIPELINE_TIMEOUT_SECONDS:-70}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-mindflow}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
@@ -318,3 +350,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  rabbitmq_data:
+    driver: local

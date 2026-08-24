@@ -7,6 +7,11 @@ const { RANK_LADDER, getRankByIndex } = require('../models/rankingConfig');
 const seasonService = require('./seasonService');
 
 const SINGLE_BADGE_TIERS = new Set(['grandmaster', 'legend']);
+// Each single-badge tier ships exactly one asset file named after its key.
+const SINGLE_BADGE_TIER_KEYS = {
+  grandmaster: 'use',
+  legend: 'only'
+};
 const DIVISION_TO_BADGE_KEY = {
   III: 'first',
   II: 'second',
@@ -20,10 +25,11 @@ function clamp(value, min, max) {
 function getBadgeKeyForRank(rank) {
   const tier = String(rank?.tier || '').toLowerCase();
   if (SINGLE_BADGE_TIERS.has(tier)) {
-    return 'use';
+    return SINGLE_BADGE_TIER_KEYS[tier] || 'use';
   }
 
-  return DIVISION_TO_BADGE_KEY[String(rank?.division || '').toUpperCase()] || 'use';
+  // 'third' is the only division asset present in every division tier's folder.
+  return DIVISION_TO_BADGE_KEY[String(rank?.division || '').toUpperCase()] || 'third';
 }
 
 function buildFallbackRankBadge(rankIndex) {

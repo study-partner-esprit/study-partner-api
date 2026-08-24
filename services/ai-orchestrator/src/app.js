@@ -10,6 +10,7 @@ const {
   logger
 } = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
+const jobsRoutes = require('./routes/jobs');
 
 // --- Environment validation (fail-fast on missing secrets) ---
 const REQUIRED_ENV = ['JWT_SECRET'];
@@ -71,6 +72,9 @@ app.use('/api/v1/ai/signals', aiRateLimiter);
 
 // Protected AI routes (require authentication)
 app.use('/api/v1/ai', authenticate, aiRoutes);
+
+// Async AI job endpoints (F01): create/poll jobs instead of sync LLM waits
+app.use('/api/v1/ai', authenticate, jobsRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
