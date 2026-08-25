@@ -18,10 +18,14 @@ const amqp = require('amqplib');
 const { validateAiJobEnvelope, validateAiResultEnvelope } = require('./envelope');
 const {
   EXCHANGE_JOBS,
+  EXCHANGE_DELAY,
   EXCHANGE_RESULTS,
   RESULT_QUEUE,
+  RETRY_DELAYS_MS,
   workQueueName,
-  dlqQueueName
+  dlqQueueName,
+  delayQueueName,
+  retryRoutingKey
 } = require('./topology');
 const logger = require('../logger');
 
@@ -104,7 +108,7 @@ function safeUrl(url) {
  */
 async function publishAiJob(type, userId, payload, opts = {}) {
   const envelope = {
-    messageId: crypto.randomUUID(),
+    messageId: opts.messageId || crypto.randomUUID(),
     correlationId: opts.correlationId || crypto.randomUUID(),
     type,
     version: '1',
@@ -129,10 +133,10 @@ async function publishAiJob(type, userId, payload, opts = {}) {
     const ok = confirmChannel.publish(EXCHANGE_JOBS, type, Buffer.from(JSON.stringify(envelope)), {
       persistent: true,
       contentType: 'application/json',
-      messageId: envelope.messageId,
-      correlationId: envelope.correlationId,
-      type: envelope.type,
-      timestamp: new Date(envelope.timestamp)
+        messageId: envelope.messageId,
+        correlationId: envelope.correlationId,
+        type: envelope.type,
+        timestamp: Date.parse(envelope.timestamp)
     });
     if (!ok || !(await confirmChannel.waitForConfirms())) {
       throw Object.assign(new Error('broker did not confirm job publish'), {
@@ -159,22 +163,49 @@ async function publishAiJob(type, userId, payload, opts = {}) {
 }
 
 /**
- * Ensure the work queue + DLQ for a given job type exist (idempotent).
- * Called by consumers/workers at startup; publishers only need the exchange.
+ * Ensure the full topology for a given job type exists (idempotent).
+ * Creates per-type delay queues, the work queue with all retry bindings, and
+ * the DLQ.  Called by workers at startup; publishers only need the exchange.
  */
 async function ensureTopologyForType(type) {
   await connect();
   const ch = await connection.createConfirmChannel();
   try {
     await ch.assertExchange(EXCHANGE_JOBS, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGE_DELAY, 'direct', { durable: true });
     await ch.assertExchange('ai.dlx', 'direct', { durable: true });
-    await ch.assertQueue(workQueueName(type), {
+
+    const workQ = workQueueName(type);
+
+    // Work queue: dead-letters rejected/unacked messages to ai.dlx
+    await ch.assertQueue(workQ, {
       durable: true,
       arguments: { 'x-dead-letter-exchange': 'ai.dlx' }
     });
-    await ch.bindQueue(workQueueName(type), EXCHANGE_JOBS, type);
+    // Primary binding: type routing key
+    await ch.bindQueue(workQ, EXCHANGE_JOBS, type);
+
+    // Per-(type, step) delay queues + extra work-queue bindings for retry keys.
+    // When a delayed message expires it keeps its CURRENT routing key
+    // (retry.<type>.<ms>), so the work queue needs a binding for each one.
+    for (const delayMs of RETRY_DELAYS_MS) {
+      const qName = delayQueueName(type, delayMs);
+      await ch.assertQueue(qName, {
+        durable: true,
+        arguments: {
+          'x-message-ttl': delayMs,
+          'x-dead-letter-exchange': EXCHANGE_JOBS
+        }
+      });
+      const retryKey = retryRoutingKey(type, delayMs);
+      await ch.bindQueue(qName, EXCHANGE_DELAY, retryKey);
+      await ch.bindQueue(workQ, EXCHANGE_JOBS, retryKey);
+    }
+
+    // DLQ: receives messages from ai.dlx with the same type routing key
     await ch.assertQueue(dlqQueueName(type), { durable: true });
     await ch.bindQueue(dlqQueueName(type), 'ai.dlx', type);
+
     await ch.waitForConfirms();
   } finally {
     await ch.close();

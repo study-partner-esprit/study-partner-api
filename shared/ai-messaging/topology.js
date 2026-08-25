@@ -4,13 +4,14 @@
  * Mirrored by `study-partner-ai/messaging/topology.py`. Names and semantics
  * MUST stay identical on both sides — covered by topology-parity tests.
  *
- * Layout (vhost `mindflow`):
+ * Layout (vhost `/`):
  *   ai.jobs   (direct)  → work queue per type: ai.work.<type>
  *                         args: dead-letter-exchange = ai.dlx
- *   ai.delay  (direct)  → delay queues: ai.delay.1s | ai.delay.4s | ai.delay.16s
+ *                         Extra binding per (type, step): retry.<type>.<ms>
+ *   ai.delay  (direct)  → per-type delay queues: ai.delay.<type>.<ms>
  *                         args: x-message-ttl = step, dead-letter-exchange = ai.jobs
- *                         (dead-lettering preserves the original routing key,
- *                          so a delayed job re-routes to its work queue)
+ *                         (dead-lettering preserves routing key = retry.<type>.<ms>,
+ *                          which is bound to the work queue above)
  *   ai.dlx    (direct)  → DLQ per type: ai.dlq.<type>
  *   ai.results(direct)  → result events consumed by the orchestrator: ai.results.inbox
  */
@@ -22,13 +23,36 @@ const EXCHANGE_RESULTS = 'ai.results';
 
 const RESULT_QUEUE = 'ai.results.inbox';
 
-const RETRY_DELAYS_MS = Object.freeze([1000, 4000, 16000]);
-const MAX_RETRIES = RETRY_DELAYS_MS.length; // 3 retries → up to 4 attempts total
+const RETRY_DELAYS_MS = Object.freeze(
+  (() => {
+    // Env override exists for integration tests (tiny delays); production
+    // uses the canonical 1s → 4s → 16s ladder.
+    const raw = process.env.AI_RETRY_DELAYS_MS;
+    if (!raw) return [1000, 4000, 16000];
+    const parsed = JSON.parse(raw);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.length ||
+      parsed.some((n) => !Number.isInteger(n) || n < 1)
+    ) {
+      throw new Error('AI_RETRY_DELAYS_MS must be a JSON array of positive integers');
+    }
+    return parsed;
+  })()
+);
+const MAX_RETRIES = RETRY_DELAYS_MS.length;
 
 const workQueueName = (type) => `ai.work.${type}`;
 const dlqQueueName = (type) => `ai.dlq.${type}`;
-const delayQueueName = (delayMs) =>
-  `ai.delay.${RETRY_DELAYS_MS.includes(delayMs) ? `${delayMs / 1000}s` : `${delayMs}ms`}`;
+/**
+ * Delay queues are PER-TYPE: a dead-lettered retry keeps its CURRENT routing
+ * key, so each (type, step) delay queue publishes under a dedicated retry key
+ * that is ALSO bound from the jobs exchange to the work queue. Expired
+ * retries therefore land back on the right work queue without needing
+ * x-dead-letter-routing-key.
+ */
+const delayQueueName = (type, delayMs) => `ai.delay.${type}.${delayMs}`;
+const retryRoutingKey = (type, delayMs) => `retry.${type}.${delayMs}`;
 
 /**
  * Classify a failure as retryable or terminal.
@@ -101,6 +125,7 @@ module.exports = {
   workQueueName,
   dlqQueueName,
   delayQueueName,
+  retryRoutingKey,
   FAILURE_CLASSES,
   classifyFailure,
   retryHeader
