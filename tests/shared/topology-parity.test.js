@@ -25,8 +25,9 @@ describe('RabbitMQ topology parity (Node ↔ fixture ↔ Python)', () => {
     expect(t.RESULT_QUEUE).toBe(fixture.queues.results);
     expect(t.workQueueName('study.plan.generate')).toBe(n.sampleWorkQueue);
     expect(t.dlqQueueName('study.plan.generate')).toBe(n.sampleDlq);
-    expect(t.delayQueueName(1000)).toBe(n.sampleDelayQueue1000);
-    expect(t.delayQueueName(16000)).toBe(n.sampleDelayQueue16000);
+    expect(t.delayQueueName('study.plan.generate', 1000)).toBe(n.sampleDelayQueue1000);
+    expect(t.delayQueueName('study.plan.generate', 16000)).toBe(n.sampleDelayQueue16000);
+    expect(t.retryRoutingKey('study.plan.generate', 1000)).toBe(n.sampleRetryKey1000);
   });
 
   test('retry policy matches fixture', () => {

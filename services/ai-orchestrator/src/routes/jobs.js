@@ -42,21 +42,31 @@ router.post('/jobs', async (req, res, next) => {
     }
 
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
-    let published;
+    const messageId = require('crypto').randomUUID();
+    const correlationId = require('crypto').randomUUID();
+
+    // Persist BEFORE publishing: a fast worker's result event must always
+    // find its job (AI-COM-07 correlation guarantee).
+    let job;
     try {
-      published = await publishAiJob(type, userId, payload, { requestId });
+      job = await AiJob.createPending({
+        type,
+        userId,
+        requestId,
+        correlationId,
+        messageId
+      });
     } catch (err) {
-      // Broker unavailable → recoverable; client may retry.
-      return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
+      return next(err);
     }
 
-    const job = await AiJob.createPending({
-      type,
-      userId,
-      requestId,
-      correlationId: published.correlationId,
-      messageId: published.messageId
-    });
+    try {
+      await publishAiJob(type, userId, payload, { requestId, correlationId, messageId });
+    } catch (err) {
+      await job.deleteOne(); // no silent loss, no orphan PENDING rows
+      logger.error('ai_job_publish_failed_rolling_back', { jobId: job.jobId });
+      return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
+    }
 
     logger.info('ai_job_created', {
       jobId: job.jobId,
