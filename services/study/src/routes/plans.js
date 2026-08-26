@@ -1,9 +1,10 @@
 const express = require('express');
 const Joi = require('joi');
-const axios = require('axios');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const { StudyPlan, Task, Course } = require('../models');
 const { tierGate } = require('@study-partner/shared/tierGate');
+const { logger } = require('@study-partner/shared');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ const schedulePlanSchema = Joi.object({
   allowLateNight: Joi.boolean().optional()
 });
 
-// Create study plan from goal (AI-powered)
+// Create study plan from goal (AI-powered) — PLAN-08: async via job bus
 router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
     const { error } = createPlanSchema.validate(req.body);
@@ -37,227 +38,161 @@ router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
     }
 
     const userId = req.user.userId;
-    const { goal, availableTimeMinutes, courseId, startDate } = req.body;
+    const { goal, availableTimeMinutes, courseId } = req.body;
 
-    // CourseId is required for plan generation
     if (!courseId) {
       return res.status(400).json({ error: 'courseId is required for plan generation' });
     }
 
-    // Verify course exists and belongs to user
     let course;
     try {
-      console.log('Looking for course with:', { courseId, userId });
       course = await Course.findOne({ _id: courseId, userId });
-      console.log('Course found:', course ? 'Yes' : 'No');
-      if (course) {
-        console.log('Course details:', {
-          id: course._id.toString(),
-          userId: course.userId,
-          status: course.status
-        });
-      }
-    } catch (error) {
-      console.error('Error finding course:', error.message);
+    } catch (err) {
       return res.status(400).json({ error: 'Invalid course ID format' });
     }
-
-    if (!course) {
-      // Try to find the course without userId filter to see if it exists at all
-      try {
-        const anyCourse = await Course.findOne({ _id: courseId });
-        if (anyCourse) {
-          console.log('Course exists but belongs to different user:', {
-            courseUserId: anyCourse.userId,
-            requestUserId: userId
-          });
-        } else {
-          console.log('Course does not exist in database');
-        }
-      } catch (e) {
-        console.error('Error checking course existence:', e.message);
-      }
-      return res.status(404).json({ error: 'Course not found' });
-    }
-
+    if (!course) return res.status(404).json({ error: 'Course not found' });
     if (course.status !== 'completed') {
       return res.status(400).json({
         error: 'Course is still being processed. Please wait until processing is complete.'
       });
     }
 
-    // Call AI planner service
-    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const correlationId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
 
-    let aiResponse;
+    // Call the orchestrator's POST /jobs route — it creates the AiJob
+    // (for result correlation) AND publishes to the bus in one shot.
+    const axios = require('axios');
+    const orchestratorUrl = process.env.AI_ORCHESTRATOR_URL || 'http://localhost:3001';
+
+    let jobResponse;
     try {
-      aiResponse = await axios.post(
-        `${aiServiceUrl}/api/ai/planner/create-plan`,
+      jobResponse = await axios.post(
+        `${orchestratorUrl}/api/v1/ai/jobs`,
         {
-          user_id: userId,
-          goal: goal,
-          available_time_minutes: availableTimeMinutes,
-          course_id: courseId || null,
-          start_date: startDate || new Date().toISOString()
+          type: 'study.plan.generate',
+          payload: {
+            goal,
+            available_minutes: availableTimeMinutes,
+            courseId: courseId || undefined,
+            concepts: []
+          }
         },
         {
-          timeout: 120000 // 2 minutes timeout
+          headers: {
+            Authorization: req.headers.authorization,
+            'X-Request-ID': requestId
+          },
+          timeout: 10000
         }
       );
-    } catch (aiError) {
-      console.error('AI planner service error:', aiError.message, aiError.code);
-
-      // If AI service is not available, provide a mock response for testing
-      if (
-        aiError.code === 'ECONNREFUSED' ||
-        aiError.message.includes('ECONNREFUSED') ||
-        aiError.message.includes('connect') ||
-        aiError.message.includes('timeout')
-      ) {
-        console.log('AI service not available, using mock response for testing');
-        aiResponse = {
-          data: {
-            tasks: [
-              {
-                id: 'mock-task-1',
-                title: `Introduction to ${goal}`,
-                description: `Learn the basics of ${goal}`,
-                estimatedTime: 30,
-                difficulty: 0.3,
-                prerequisites: [],
-                is_review: false
-              },
-              {
-                id: 'mock-task-2',
-                title: `Core Concepts of ${goal}`,
-                description: `Dive deeper into ${goal} concepts`,
-                estimatedTime: 45,
-                difficulty: 0.5,
-                prerequisites: ['mock-task-1'],
-                is_review: false
-              },
-              {
-                id: 'mock-task-3',
-                title: `Advanced ${goal} Topics`,
-                description: `Master advanced ${goal} techniques`,
-                estimatedTime: 60,
-                difficulty: 0.7,
-                prerequisites: ['mock-task-2'],
-                is_review: false
-              },
-              {
-                id: 'mock-task-4',
-                title: `Practice and Review ${goal}`,
-                description: `Apply your knowledge and review key concepts`,
-                estimatedTime: 30,
-                difficulty: 0.4,
-                prerequisites: ['mock-task-3'],
-                is_review: true
-              }
-            ],
-            warning:
-              'AI service is currently starting up. This is a mock study plan for testing purposes.'
-          }
-        };
-      } else {
-        return res.status(500).json({
-          error: 'Failed to create study plan',
-          details: aiError.response?.data?.detail || aiError.message
-        });
-      }
+    } catch (err) {
+      logger.error('orchestrator_job_create_failed', {
+        status: err.response?.status,
+        error: err.message
+      });
+      return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
     }
 
-    // Extract task graph from AI response
-    const aiTasks = aiResponse.data.tasks || [];
-    const taskGraph = {
-      goal: goal,
-      tasks: aiTasks.map((task) => ({
-        id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        title: task.title,
-        description: task.description,
-        estimated_minutes: task.estimatedTime || task.estimated_minutes || 30,
-        difficulty: task.difficulty || 0.5,
-        prerequisites: task.prerequisites || [],
-        is_review: task.is_review || false
-      }))
-    };
+    const { jobId, correlationId: cid } = jobResponse.data;
 
-    // Calculate total time
-    const totalEstimatedMinutes = taskGraph.tasks.reduce((sum, t) => sum + t.estimated_minutes, 0);
+    logger.info('plan_job_published', { userId, courseId, jobId, correlationId: cid });
 
-    // Create study plan in database
-    console.log('Creating study plan with data:', {
-      userId,
-      courseId: courseId || null,
+    return res.status(202).json({
+      status: 'processing',
+      jobId,
+      correlationId: cid,
+      message: 'Plan generation started. Poll /api/v1/ai/jobs/:jobId for completion.'
+    });
+  } catch (err) {
+    logger.error('plan_create_failed', { error: err.message });
+    return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
+  }
+});
+
+// Finalise a plan once the job is COMPLETED — persists StudyPlan + Tasks
+router.post('/create-status', async (req, res) => {
+  try {
+    const { correlationId } = req.body || {};
+    if (!correlationId) {
+      return res.status(400).json({ error: 'correlationId is required' });
+    }
+
+    // Read the AiJob directly via the study service's mongoose connection
+    const aiJobsColl = mongoose.connection.collection('ai_jobs');
+    const job = await aiJobsColl.findOne({ correlationId });
+
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    if (job.status === 'PENDING' || job.status === 'PROCESSING' || job.status === 'RETRYING') {
+      return res.status(202).json({ status: job.status, message: 'Job still in progress' });
+    }
+    if (job.status === 'FAILED') {
+      return res.status(500).json({ error: 'Plan generation failed', details: job.error });
+    }
+
+    // COMPLETED — persist StudyPlan
+    const planPayload = job.result || {};
+    const taskGraph = planPayload.task_graph || { goal: '', tasks: [] };
+    const goal = taskGraph.goal || '';
+    const totalEstimatedMinutes = (taskGraph.tasks || []).reduce(
+      (sum, t) => sum + (t.estimated_minutes || 0),
+      0
+    );
+
+    const studyPlan = await StudyPlan.create({
+      userId: job.userId,
+      courseId: null,
       goal,
-      availableTimeMinutes,
+      availableTimeMinutes: totalEstimatedMinutes,
+      taskGraph,
       totalEstimatedMinutes,
-      taskGraphTasksCount: taskGraph.tasks.length
+      warning: planPayload.warning || null,
+      status: 'created'
     });
 
-    try {
-      const studyPlan = await StudyPlan.create({
-        userId,
-        courseId: courseId || null,
-        goal,
-        availableTimeMinutes,
-        taskGraph,
-        totalEstimatedMinutes,
-        warning: aiResponse.data.warning || null,
-        status: 'created'
+    const createdTasks = [];
+    for (const taskData of taskGraph.tasks || []) {
+      const task = await Task.create({
+        userId: job.userId,
+        studyPlanId: studyPlan._id.toString(),
+        title: taskData.title,
+        description: taskData.description,
+        priority:
+          taskData.difficulty < 0.4 ? 'low' : taskData.difficulty < 0.7 ? 'medium' : 'high',
+        estimatedTime: taskData.estimated_minutes,
+        tags: [goal.substring(0, 50)],
+        status: 'todo'
       });
-      console.log('Study plan created successfully:', studyPlan._id);
-
-      // Create tasks linked to this study plan
-      const createdTasks = [];
-      console.log('Creating tasks for study plan:', studyPlan._id);
-
-      try {
-        for (const taskData of taskGraph.tasks) {
-          const task = await Task.create({
-            userId,
-            studyPlanId: studyPlan._id.toString(),
-            title: taskData.title,
-            description: taskData.description,
-            priority:
-              taskData.difficulty < 0.4 ? 'low' : taskData.difficulty < 0.7 ? 'medium' : 'high',
-            estimatedTime: taskData.estimated_minutes,
-            tags: [goal.substring(0, 50)],
-            status: 'todo'
-          });
-          createdTasks.push(task);
-        }
-        console.log('Created', createdTasks.length, 'tasks for study plan');
-      } catch (taskError) {
-        console.error('Error creating tasks:', taskError);
-        // Don't fail the whole request if tasks fail to create
-        console.log('Continuing without tasks...');
-      }
-
-      res.status(201).json({
-        message: 'Study plan created successfully',
-        plan: {
-          id: studyPlan._id.toString(),
-          userId: studyPlan.userId,
-          courseId: studyPlan.courseId,
-          goal: studyPlan.goal,
-          availableTimeMinutes: studyPlan.availableTimeMinutes,
-          totalEstimatedMinutes: studyPlan.totalEstimatedMinutes,
-          tasksCount: taskGraph.tasks.length,
-          status: studyPlan.status,
-          warning: studyPlan.warning,
-          createdAt: studyPlan.createdAt,
-          taskGraph: studyPlan.taskGraph
-        },
-        tasks: createdTasks
-      });
-    } catch (dbError) {
-      console.error('Database error creating study plan:', dbError);
-      return res.status(500).json({ error: 'Failed to save study plan to database' });
+      createdTasks.push(task);
     }
-  } catch (error) {
-    console.error('Error creating study plan:', error);
-    res.status(500).json({ error: 'Failed to create study plan' });
+
+    logger.info('plan_finalised', {
+      userId: job.userId,
+      planId: studyPlan._id.toString(),
+      fallbackUsed: planPayload.fallbackUsed || false
+    });
+
+    return res.status(201).json({
+      message: 'Study plan finalised',
+      plan: {
+        id: studyPlan._id.toString(),
+        userId: studyPlan.userId,
+        goal: studyPlan.goal,
+        availableTimeMinutes: studyPlan.availableTimeMinutes,
+        totalEstimatedMinutes: studyPlan.totalEstimatedMinutes,
+        tasksCount: createdTasks.length,
+        status: studyPlan.status,
+        warning: studyPlan.warning,
+        fallbackUsed: planPayload.fallbackUsed || false,
+        taskGraph: studyPlan.taskGraph,
+        createdAt: studyPlan.createdAt
+      },
+      tasks: createdTasks
+    });
+  } catch (err) {
+    logger.error('plan_finalize_failed', { error: err.message });
+    res.status(500).json({ error: 'Failed to finalise study plan' });
   }
 });
 
@@ -273,7 +208,6 @@ router.get('/', async (req, res) => {
 
     const plans = await StudyPlan.find(filter).sort({ createdAt: -1 }).lean();
 
-    // Format response
     const formattedPlans = plans.map((plan) => ({
       id: plan._id.toString(),
       userId: plan.userId,
@@ -290,7 +224,7 @@ router.get('/', async (req, res) => {
 
     res.json({ plans: formattedPlans });
   } catch (error) {
-    console.error('Error fetching study plans:', error);
+    logger.error('plans_list_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch study plans' });
   }
 });
@@ -304,16 +238,7 @@ router.get('/calendar', async (req, res) => {
     const end = new Date(start);
     end.setDate(end.getDate() + weeks * 7);
 
-    console.log(`\n=== Fetching calendar entries ===`);
-    console.log(`User ID: ${userId}`);
-    console.log(`Date range: ${start.toISOString()} to ${end.toISOString()}`);
-    console.log(`Weeks: ${weeks}`);
-
     const calendarColl = mongoose.connection.collection('calendar');
-
-    // Get total count for this user
-    const totalCount = await calendarColl.countDocuments({ userId });
-    console.log(`Total entries for user: ${totalCount}`);
 
     const entries = await calendarColl
       .find({
@@ -323,14 +248,9 @@ router.get('/calendar', async (req, res) => {
       .sort({ startTime: 1 })
       .toArray();
 
-    console.log(`Found ${entries.length} entries in date range`);
-    if (entries.length > 0) {
-      console.log('Sample entry:', entries[0]);
-    }
-
     res.json({ entries });
   } catch (error) {
-    console.error('Error fetching calendar entries:', error);
+    logger.error('calendar_fetch_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch calendar entries' });
   }
 });
@@ -347,7 +267,6 @@ router.get('/:planId([0-9a-fA-F]{24})', async (req, res) => {
       return res.status(404).json({ error: 'Study plan not found' });
     }
 
-    // Get associated tasks
     const tasks = await Task.find({ studyPlanId: planId, userId }).lean();
 
     res.json({
@@ -368,7 +287,7 @@ router.get('/:planId([0-9a-fA-F]{24})', async (req, res) => {
       tasks
     });
   } catch (error) {
-    console.error('Error fetching study plan:', error);
+    logger.error('plan_fetch_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch study plan' });
   }
 });
@@ -385,27 +304,22 @@ router.post('/:planId/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
     const { planId } = req.params;
     const { calendarEvents, maxMinutesPerDay, allowLateNight } = req.body;
 
-    // Find the study plan
     const plan = await StudyPlan.findOne({ _id: planId, userId });
 
     if (!plan) {
       return res.status(404).json({ error: 'Study plan not found' });
     }
 
-    // Get tasks for this plan
     const tasks = await Task.find({ studyPlanId: planId, userId }).lean();
 
     if (tasks.length === 0) {
       return res.status(400).json({ error: 'No tasks found for this study plan' });
     }
 
-    // Call Python AI scheduler service
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const axios = require('axios');
 
     try {
-      const axios = require('axios');
-
-      // Call the new Python scheduler endpoint
       const schedulerResponse = await axios.post(`${aiServiceUrl}/api/ai/scheduler/schedule`, {
         user_id: userId,
         tasks: tasks,
@@ -416,7 +330,6 @@ router.post('/:planId/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
 
       const schedule = schedulerResponse.data.schedule;
 
-      // Persist schedule into `calendar` collection for user's calendar view
       try {
         const calendarColl = mongoose.connection.collection('calendar');
         const entries = (schedule.sessions || schedule || []).map((s) => ({
@@ -441,10 +354,9 @@ router.post('/:planId/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
           await calendarColl.insertMany(entries);
         }
       } catch (saveErr) {
-        console.error('Failed to save schedule to calendar collection:', saveErr.message);
+        logger.error('calendar_save_failed', { error: saveErr.message });
       }
 
-      // Update plan status
       plan.status = 'scheduled';
       plan.scheduledAt = new Date();
       await plan.save();
@@ -455,14 +367,14 @@ router.post('/:planId/schedule', tierGate('vip', 'vip_plus', 'trial'), async (re
         schedule: schedule
       });
     } catch (aiError) {
-      console.error('Scheduler service error:', aiError.message);
+      logger.error('scheduler_service_error', { error: aiError.message });
       return res.status(500).json({
         error: 'Failed to schedule study plan',
         details: aiError.response?.data?.detail || aiError.message
       });
     }
   } catch (error) {
-    console.error('Error scheduling study plan:', error);
+    logger.error('plan_schedule_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to schedule study plan' });
   }
 });
@@ -483,10 +395,8 @@ router.get('/:planId/schedule', async (req, res) => {
       return res.status(400).json({ error: 'Study plan has not been scheduled yet' });
     }
 
-    // Get tasks with their schedule info
     const tasks = await Task.find({ studyPlanId: planId, userId }).lean();
 
-    // Generate schedule view
     const schedule = {
       planId: plan._id.toString(),
       goal: plan.goal,
@@ -510,7 +420,7 @@ router.get('/:planId/schedule', async (req, res) => {
 
     res.json({ schedule });
   } catch (error) {
-    console.error('Error fetching schedule:', error);
+    logger.error('schedule_fetch_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch schedule' });
   }
 });
@@ -527,47 +437,36 @@ router.delete('/:planId', async (req, res) => {
       return res.status(404).json({ error: 'Study plan not found' });
     }
 
-    // Delete associated tasks
     await Task.deleteMany({ studyPlanId: planId, userId });
-
-    // Delete study plan
     await StudyPlan.deleteOne({ _id: planId, userId });
 
     res.json({ message: 'Study plan and associated tasks deleted successfully' });
   } catch (error) {
-    console.error('Error deleting study plan:', error);
+    logger.error('plan_delete_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to delete study plan' });
   }
 });
 
 // Schedule user's tasks (all or filtered)
 router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
-  console.log('=== Schedule tasks endpoint called ===');
-  console.log('Request body:', JSON.stringify(req.body, null, 2));
-  console.log('User from auth:', req.user);
   try {
     const userId = req.user.userId;
     const { taskIds, calendarEvents, maxMinutesPerDay, allowLateNight } = req.body;
 
-    // Get tasks - either specific IDs or all user tasks with status 'todo' or 'in-progress'
     let tasks;
     if (taskIds && Array.isArray(taskIds) && taskIds.length > 0) {
       tasks = await Task.find({ _id: { $in: taskIds }, userId }).lean();
     } else {
-      // Get all pending tasks
       tasks = await Task.find({
         userId,
         status: { $in: ['todo', 'in-progress'] }
       }).lean();
     }
 
-    console.log(`Found ${tasks.length} tasks to schedule for user ${userId}`);
-
     if (tasks.length === 0) {
       return res.status(400).json({ error: 'No tasks found to schedule' });
     }
 
-    // Check for existing scheduled entries to prevent duplicates
     const calendarColl = mongoose.connection.collection('calendar');
     const taskIdsToSchedule = tasks.map((t) => t._id.toString());
     const existingScheduled = await calendarColl
@@ -578,13 +477,9 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
       })
       .toArray();
 
-    console.log(`Found ${existingScheduled.length} already scheduled tasks`);
-
     if (existingScheduled.length > 0) {
-      // Remove already scheduled tasks from the list
       const scheduledTaskIds = new Set(existingScheduled.map((e) => e.taskId));
       tasks = tasks.filter((t) => !scheduledTaskIds.has(t._id.toString()));
-      console.log(`After filtering duplicates: ${tasks.length} tasks remain`);
 
       if (tasks.length === 0) {
         return res.status(200).json({
@@ -595,12 +490,10 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
       }
     }
 
-    // Call Python AI scheduler service
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const axios = require('axios');
 
     try {
-      const axios = require('axios');
-
       const schedulerResponse = await axios.post(`${aiServiceUrl}/api/ai/scheduler/schedule`, {
         user_id: userId,
         tasks: tasks,
@@ -611,10 +504,8 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
 
       const schedule = schedulerResponse.data.schedule;
 
-      // Persist schedule into `calendar` collection (task-scheduling flow)
       try {
-        const calendarColl = mongoose.connection.collection('calendar');
-        const entries = (schedule.sessions || schedule || []).map((s) => ({
+        const calendarEntries = (schedule.sessions || schedule || []).map((s) => ({
           userId,
           planId: null,
           taskId: s.taskId || s.task_id || s.task || null,
@@ -632,18 +523,12 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
           createdAt: new Date()
         }));
 
-        console.log(`Attempting to save ${entries.length} entries to calendar collection`);
-        console.log('Sample entry:', JSON.stringify(entries[0], null, 2));
-
-        if (entries.length > 0) {
-          const result = await calendarColl.insertMany(entries);
-          console.log(`✓ Successfully saved ${result.insertedCount} entries to calendar`);
-        } else {
-          console.log('⚠ No entries to save to calendar');
+        if (calendarEntries.length > 0) {
+          await calendarColl.insertMany(calendarEntries);
         }
       } catch (saveErr) {
-        console.error('❌ Failed to save scheduled tasks to calendar collection:', saveErr);
-        throw saveErr; // Propagate error to main handler
+        logger.error('calendar_save_failed', { error: saveErr.message });
+        throw saveErr;
       }
 
       res.json({
@@ -652,14 +537,14 @@ router.post('/schedule-tasks', tierGate('vip', 'vip_plus', 'trial'), async (req,
         tasksCount: tasks.length
       });
     } catch (aiError) {
-      console.error('Scheduler service error:', aiError.message);
+      logger.error('scheduler_service_error', { error: aiError.message });
       return res.status(500).json({
         error: 'Failed to schedule tasks',
         details: aiError.response?.data?.detail || aiError.message
       });
     }
   } catch (error) {
-    console.error('Error scheduling tasks:', error);
+    logger.error('tasks_schedule_failed', { error: error.message });
     res.status(500).json({ error: 'Failed to schedule tasks' });
   }
 });

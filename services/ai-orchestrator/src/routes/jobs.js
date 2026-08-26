@@ -9,21 +9,10 @@
 const express = require('express');
 const { logger } = require('@study-partner/shared');
 const { publishAiJob, AI_JOB_TYPES } = require('@study-partner/shared/ai-messaging');
+const { validateJobPayload } = require('@study-partner/shared/ai-messaging/payloadSchemas');
 const AiJob = require('../models/AiJob');
 
 const router = express.Router();
-
-// Basic per-type payload sanity before publishing. Per-agent schemas
-// (PLAN-02, COACH-02, EVAL-02, SEARCH-02) tighten these on each migration.
-const PAYLOAD_RULES = {
-  'study.plan.generate': (p) =>
-    typeof p.goal === 'string' && p.goal.length >= 1 && p.goal.length <= 500,
-  'study.coach.nudge': (p) => typeof p === 'object',
-  'study.eval.step': (p) => typeof p === 'object' && !!p.sessionId,
-  'study.search.query': (p) =>
-    typeof p.query === 'string' && p.query.length >= 1 && p.query.length <= 500,
-  'study.ingest.course': (p) => typeof p === 'object' && !!p.fileRef
-};
 
 router.post('/jobs', async (req, res, next) => {
   try {
@@ -36,9 +25,11 @@ router.post('/jobs', async (req, res, next) => {
     if (!payload || typeof payload !== 'object') {
       return res.status(400).json({ error: 'payload must be an object' });
     }
-    const payloadOk = PAYLOAD_RULES[type] ? PAYLOAD_RULES[type](payload) : true;
-    if (!payloadOk) {
-      return res.status(422).json({ error: `payload failed validation for ${type}` });
+    // Strict per-type payload validation (PLAN-02). Over-length or malformed
+    // payloads are rejected here, BEFORE persisting or publishing.
+    const payloadCheck = validateJobPayload(type, payload);
+    if (!payloadCheck.valid) {
+      return res.status(422).json({ error: 'payload failed validation', details: payloadCheck.errors });
     }
 
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
