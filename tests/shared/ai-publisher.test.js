@@ -12,7 +12,8 @@ jest.mock('amqplib', () => {
     connection: null,
     confirmChannel: null,
     publishes: [],
-    channels: []
+    channels: [],
+    channelHandlers: {}
   };
 
   function makeConfirmChannel() {
@@ -25,7 +26,9 @@ jest.mock('amqplib', () => {
         return true;
       }),
       waitForConfirms: jest.fn().mockResolvedValue(true),
-      on: jest.fn(),
+      on: jest.fn((event, handler) => {
+        state.channelHandlers[event] = handler;
+      }),
       close: jest.fn().mockResolvedValue({})
     };
     return ch;
@@ -79,7 +82,7 @@ afterEach(async () => {
 
 describe('publishAiJob (AI-COM-04)', () => {
   test('publishes a valid job envelope to the jobs exchange', async () => {
-    const { messageId, correlationId } = await publishAiJob(
+    const { messageId } = await publishAiJob(
       'study.plan.generate',
       'user-1',
       { goal: 'learn graphs' },
@@ -128,6 +131,41 @@ describe('publishAiJob (AI-COM-04)', () => {
       code: 'EPUBLISHCONFIRM'
     });
   });
+
+  test('publishes with mandatory:true and registers a return listener', async () => {
+    await publishAiJob('study.eval.step', 'u', {});
+
+    expect(amqp.__state.confirmChannel.publish).toHaveBeenCalledWith(
+      EXCHANGE_JOBS,
+      'study.eval.step',
+      expect.any(Buffer),
+      expect.objectContaining({ mandatory: true })
+    );
+    expect(typeof amqp.__state.channelHandlers['return']).toBe('function');
+  });
+
+  test('ENORoute is thrown for a returned messageId and does not poison later publishes', async () => {
+    // First publish succeeds; remember nothing special about it.
+    await publishAiJob('study.search.query', 'u', {});
+
+    // Second publish: the broker returns THIS message (no queue bound) while
+    // confirming it — basic.return arrives inside the confirm window.
+    const ch = amqp.__state.confirmChannel;
+    ch.waitForConfirms.mockImplementationOnce(async () => {
+      const last = amqp.__state.publishes[amqp.__state.publishes.length - 1];
+      amqp.__state.channelHandlers['return']({ properties: { messageId: last.opts.messageId } });
+      return true;
+    });
+
+    await expect(publishAiJob('study.search.query', 'u', {})).rejects.toMatchObject({
+      code: 'ENOROUTE'
+    });
+
+    // The unroutable marker must not poison subsequent publishes
+    await expect(publishAiJob('study.search.query', 'u', {})).resolves.toMatchObject({
+      messageId: expect.any(String)
+    });
+  });
 });
 
 describe('ensureTopologyForType', () => {
@@ -145,9 +183,7 @@ describe('ensureTopologyForType', () => {
     expect(queues).toContain('ai.delay.study.eval.step.4000');
     expect(queues).toContain('ai.delay.study.eval.step.16000');
 
-    const workCall = ch.assertQueue.mock.calls.find(
-      (c) => c[0] === 'ai.work.study.eval.step'
-    );
+    const workCall = ch.assertQueue.mock.calls.find((c) => c[0] === 'ai.work.study.eval.step');
     expect(workCall[1].arguments['x-dead-letter-exchange']).toBe('ai.dlx');
     // Terminal dead-letters must route by the bare type even when the
     // message's current key is a retry key.

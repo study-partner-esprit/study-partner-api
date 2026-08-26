@@ -40,9 +40,7 @@ describe('AI job envelope (AI-COM-02)', () => {
 
   test('rejects missing/invalid userId (must come from auth context)', () => {
     for (const userId of [undefined, '', null, 'x'.repeat(200)]) {
-      expect(
-        validateAiJobEnvelope({ ...validBase, userId, payload: {} }).valid
-      ).toBe(false);
+      expect(validateAiJobEnvelope({ ...validBase, userId, payload: {} }).valid).toBe(false);
     }
   });
 
@@ -56,7 +54,8 @@ describe('AI job envelope (AI-COM-02)', () => {
       validateAiJobEnvelope({ ...validBase, version: '2', userId: 'u', payload: {} }).valid
     ).toBe(false);
     expect(
-      validateAiJobEnvelope({ ...validBase, messageId: 'not-a-uuid', userId: 'u', payload: {} }).valid
+      validateAiJobEnvelope({ ...validBase, messageId: 'not-a-uuid', userId: 'u', payload: {} })
+        .valid
     ).toBe(false);
   });
 
@@ -72,9 +71,9 @@ describe('AI job envelope (AI-COM-02)', () => {
 
   test('covers all registered job types', () => {
     for (const type of AI_JOB_TYPES) {
-      expect(
-        validateAiJobEnvelope({ ...validBase, type, userId: 'u', payload: {} }).valid
-      ).toBe(true);
+      expect(validateAiJobEnvelope({ ...validBase, type, userId: 'u', payload: {} }).valid).toBe(
+        true
+      );
     }
   });
 });

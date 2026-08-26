@@ -6,7 +6,7 @@ const requireOwnedUser = (req, res, next) => {
   if (String(req.user?.userId) === String(targetUserId) || isAdmin) {
     return next();
   }
-  return res.status(403).json({ error: 'Forbidden: cannot access another user\'s data' });
+  return res.status(403).json({ error: "Forbidden: cannot access another user's data" });
 };
 
 function createProxy(options) {
@@ -23,7 +23,7 @@ function createProxy(options) {
     forwardAuth = false,
     mapBody,
     mapResponse,
-    validateBody,
+    validateBody
   } = options;
 
   const middlewares = [];
@@ -83,18 +83,18 @@ function createProxy(options) {
       if (err.response) {
         return res.status(err.response.status).json({
           error: err.response.data?.detail || err.response.data?.error || 'Request failed',
-          details: err.response.data?.detail || err.message,
+          details: err.response.data?.detail || err.message
         });
       }
       if (err.request) {
         return res.status(503).json({
           error: 'AI service unavailable',
-          details: 'Cannot connect to AI service',
+          details: 'Cannot connect to AI service'
         });
       }
       return res.status(500).json({
         error: 'Request failed',
-        details: err.message,
+        details: err.message
       });
     }
   };
