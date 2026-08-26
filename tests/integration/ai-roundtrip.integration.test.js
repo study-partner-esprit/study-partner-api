@@ -135,7 +135,9 @@ d('AI-COM-10 round trip (real RabbitMQ)', () => {
 
     try {
       // Subscribe to results BEFORE creating the job (no missed events).
-      const { startResultConsumer } = require('../../services/ai-orchestrator/src/services/jobResultConsumer');
+      const {
+        startResultConsumer
+      } = require('../../services/ai-orchestrator/src/services/jobResultConsumer');
       await startResultConsumer();
 
       const res = await request(app)

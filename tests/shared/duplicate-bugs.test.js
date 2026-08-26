@@ -12,8 +12,7 @@ describe("badge key regression ('use' key bug, leaderboardService)", () => {
 
   // Evaluate the module source without executing its model imports.
   const getBadgeKey = (rank) => {
-    const stubRequire = () =>
-      new Proxy(() => stubRequire(), { get: () => stubRequire() });
+    const stubRequire = () => new Proxy(() => stubRequire(), { get: () => stubRequire() });
     const fn = new Function(
       'require',
       'module',
@@ -40,10 +39,7 @@ describe("badge key regression ('use' key bug, leaderboardService)", () => {
   });
 
   test('unknown division falls back to an asset that exists in every division tier', () => {
-    const webPublic = path.join(
-      __dirname,
-      '../../../study-partner-web/public/ranking-badges'
-    );
+    const webPublic = path.join(__dirname, '../../../study-partner-web/public/ranking-badges');
     const fallback = getBadgeKey({ tier: 'Novice', division: 'unknown' });
     const SINGLE_BADGE_TIERS = new Set(['grandmaster', 'legend']);
     for (const tier of fs.readdirSync(webPublic)) {
@@ -54,8 +50,7 @@ describe("badge key regression ('use' key bug, leaderboardService)", () => {
 });
 
 describe('duplicate-method regressions (audit §1-6)', () => {
-  const py = (rel) =>
-    fs.readFileSync(path.join(__dirname, rel), 'utf8');
+  const py = (rel) => fs.readFileSync(path.join(__dirname, rel), 'utf8');
 
   test('signal_processing service defines is_ready exactly once', () => {
     const src = py('../../../study-partner-ai/services/signal_processing_service/service.py');

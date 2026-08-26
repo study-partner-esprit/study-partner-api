@@ -2,7 +2,8 @@ require('dotenv').config();
 const app = require('./app');
 const { checkAIServiceHealth } = require('./services/agentService');
 const { connectDatabase, disconnectDatabase, logger } = require('@study-partner/shared');
-const { closeAiMessaging } = require('@study-partner/shared/ai-messaging');
+const { closeAiMessaging, ensureTopologyForType } = require('@study-partner/shared/ai-messaging');
+const { AI_JOB_TYPES } = require('@study-partner/shared/ai-messaging');
 const { startResultConsumer } = require('./services/jobResultConsumer');
 const { registerProcessHandlers } = require('@study-partner/shared/processHandlers');
 
@@ -26,6 +27,19 @@ async function startServer() {
         await startResultConsumer();
       } catch (err) {
         logger.warn(`Result consumer unavailable (${err.message}); retrying via bus reconnect`);
+      }
+
+      // Declare work/DLQ/delay topology for every known job type BEFORE the
+      // API accepts publishes — otherwise mandatory publishes fail with
+      // ENOROUTE until a worker happens to start (AI-COM-04 no-silent-loss).
+      for (const jobType of AI_JOB_TYPES) {
+        try {
+          await ensureTopologyForType(jobType);
+        } catch (err) {
+          logger.warn(
+            `Topology unavailable for ${jobType} (${err.message}); will retry on publish`
+          );
+        }
       }
     }
 

@@ -41,6 +41,10 @@ let connecting = null;
 let reconnectAttempts = 0;
 let closing = false;
 let resultHandler = null;
+// messageIds the broker returned as UNROUTABLE (no queue matched). A
+// confirmed-but-unroutable publish is still a lost job, so publishAiJob
+// checks this set after confirms and fails loudly instead.
+const unroutableMessageIds = new Set();
 
 function backoffDelay(attempt) {
   return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** attempt);
@@ -70,6 +74,13 @@ async function connect() {
       // Publisher-confirm channel: jobs are only "sent" after broker ACK.
       confirmChannel = await connection.createConfirmChannel();
       await confirmChannel.assertExchange(EXCHANGE_JOBS, 'direct', { durable: true });
+      // mandatory:true → unroutable jobs come back via basic.return instead
+      // of being silently dropped (AI-COM-04: no silent loss).
+      confirmChannel.on('return', (msg) => {
+        const id = msg && msg.properties && msg.properties.messageId;
+        logger.error('ai_job_unroutable', { messageId: id });
+        if (id) unroutableMessageIds.add(id);
+      });
       confirmChannel.on('error', () => {}); // handled via connection close
       return connection;
     } catch (err) {
@@ -132,16 +143,26 @@ async function publishAiJob(type, userId, payload, opts = {}) {
 
     const ok = confirmChannel.publish(EXCHANGE_JOBS, type, Buffer.from(JSON.stringify(envelope)), {
       persistent: true,
+      mandatory: true,
       contentType: 'application/json',
-        messageId: envelope.messageId,
-        correlationId: envelope.correlationId,
-        type: envelope.type,
-        timestamp: Date.parse(envelope.timestamp)
+      messageId: envelope.messageId,
+      correlationId: envelope.correlationId,
+      type: envelope.type,
+      timestamp: Date.parse(envelope.timestamp)
     });
     if (!ok || !(await confirmChannel.waitForConfirms())) {
       throw Object.assign(new Error('broker did not confirm job publish'), {
         code: 'EPUBLISHCONFIRM'
       });
+    }
+    // A confirmed-but-unroutable message (queue missing for this type) would
+    // otherwise be lost — surface it as a recoverable failure.
+    if (unroutableMessageIds.has(envelope.messageId)) {
+      unroutableMessageIds.delete(envelope.messageId);
+      throw Object.assign(
+        new Error(`no queue bound for job type "${type}" — worker topology missing`),
+        { code: 'ENOROUTE' }
+      );
     }
 
     logger.info('ai_job_published', {
