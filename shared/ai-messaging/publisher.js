@@ -177,10 +177,15 @@ async function ensureTopologyForType(type) {
 
     const workQ = workQueueName(type);
 
-    // Work queue: dead-letters rejected/unacked messages to ai.dlx
+    // Work queue: dead-letters rejected/unacked messages to ai.dlx. The
+    // routing key is pinned to the bare type — a retried message's CURRENT
+    // key is `retry.<type>.<ms>` and would otherwise miss the DLQ binding.
     await ch.assertQueue(workQ, {
       durable: true,
-      arguments: { 'x-dead-letter-exchange': 'ai.dlx' }
+      arguments: {
+        'x-dead-letter-exchange': 'ai.dlx',
+        'x-dead-letter-routing-key': type
+      }
     });
     // Primary binding: type routing key
     await ch.bindQueue(workQ, EXCHANGE_JOBS, type);

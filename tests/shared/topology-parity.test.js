@@ -6,6 +6,11 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Parity is defined against the CANONICAL ladder — drop any outer-shell
+// override so the comparison can't be skewed by integration-test env.
+delete process.env.AI_RETRY_DELAYS_MS;
+jest.resetModules();
 const t = require('../../shared/ai-messaging/topology');
 
 const fixture = JSON.parse(

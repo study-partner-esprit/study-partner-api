@@ -25,6 +25,10 @@ process.env.JWT_REFRESH_SECRET =
   process.env.JWT_REFRESH_SECRET || 'integration-test-refresh-secret';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/study_partner_test';
 process.env.NODE_ENV = 'test';
+// Tiny retry ladder so exhaustion completes in milliseconds. Must be set
+// BEFORE any topology/publisher module loads (constants are read at require
+// time) and is inherited by spawned stub workers.
+process.env.AI_RETRY_DELAYS_MS = '[100,100,100]';
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL;
 const d = RABBITMQ_URL ? describe : describe.skip;
