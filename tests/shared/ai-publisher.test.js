@@ -3,6 +3,10 @@
  * amqplib is mocked; no broker required.
  */
 
+// Pin retry ladder BEFORE topology loads so queue names are deterministic
+// even if the outer shell exports a test override.
+process.env.AI_RETRY_DELAYS_MS = '[1000,4000,16000]';
+
 jest.mock('amqplib', () => {
   const state = {
     connection: null,
@@ -127,26 +131,54 @@ describe('publishAiJob (AI-COM-04)', () => {
 });
 
 describe('ensureTopologyForType', () => {
-  test('declares work queue bound to type and its DLQ', async () => {
+  test('declares work queue (with retry bindings), per-type delay queues, and DLQ', async () => {
     await ensureTopologyForType('study.eval.step');
 
     const ch = amqp.__state.channels[amqp.__state.channels.length - 1];
-    expect(ch.assertExchange).toHaveBeenCalledTimes(2); // ai.jobs + ai.dlx
+    expect(ch.assertExchange).toHaveBeenCalledTimes(3); // ai.jobs + ai.delay + ai.dlx
 
     const queues = ch.assertQueue.mock.calls.map((c) => c[0]);
     expect(queues).toContain('ai.work.study.eval.step');
     expect(queues).toContain('ai.dlq.study.eval.step');
+    // Per-type delay queues, one per retry step
+    expect(queues).toContain('ai.delay.study.eval.step.1000');
+    expect(queues).toContain('ai.delay.study.eval.step.4000');
+    expect(queues).toContain('ai.delay.study.eval.step.16000');
 
-    const workArgs = ch.assertQueue.mock.calls.find(
+    const workCall = ch.assertQueue.mock.calls.find(
       (c) => c[0] === 'ai.work.study.eval.step'
-    )[1].arguments;
-    expect(workArgs['x-dead-letter-exchange']).toBe('ai.dlx');
+    );
+    expect(workCall[1].arguments['x-dead-letter-exchange']).toBe('ai.dlx');
+    // Terminal dead-letters must route by the bare type even when the
+    // message's current key is a retry key.
+    expect(workCall[1].arguments['x-dead-letter-routing-key']).toBe('study.eval.step');
 
+    const delayArgs = ch.assertQueue.mock.calls.find(
+      (c) => c[0] === 'ai.delay.study.eval.step.1000'
+    )[1].arguments;
+    expect(delayArgs).toEqual({
+      'x-message-ttl': 1000,
+      'x-dead-letter-exchange': 'ai.jobs'
+    });
+
+    // Primary binding + one extra binding per retry step on the work queue
     expect(ch.bindQueue).toHaveBeenCalledWith(
       'ai.work.study.eval.step',
       EXCHANGE_JOBS,
       'study.eval.step'
     );
+    for (const ms of [1000, 4000, 16000]) {
+      expect(ch.bindQueue).toHaveBeenCalledWith(
+        'ai.delay.study.eval.step.' + ms,
+        'ai.delay',
+        `retry.study.eval.step.${ms}`
+      );
+      expect(ch.bindQueue).toHaveBeenCalledWith(
+        'ai.work.study.eval.step',
+        EXCHANGE_JOBS,
+        `retry.study.eval.step.${ms}`
+      );
+    }
     expect(ch.bindQueue).toHaveBeenCalledWith(
       'ai.dlq.study.eval.step',
       'ai.dlx',
