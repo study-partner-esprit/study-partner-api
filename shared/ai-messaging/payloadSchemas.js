@@ -15,6 +15,28 @@ const AVAILABLE_MINUTES_MIN = 1;
 const AVAILABLE_MINUTES_MAX = 7 * 24 * 60; // one week
 const COURSE_ID_MAX_CHARS = 64;
 
+// Coach input limits (COACH-02) — keep in sync with workers/schemas.py
+const COACH_SESSION_ID_MAX_CHARS = 64;
+const COACH_MAX_SIGNALS = 20;
+const COACH_MAX_MESSAGES = 40;
+const COACH_MESSAGE_MAX_CHARS = 2000;
+const COACH_MAX_PAYLOAD_BYTES = 16 * 1024; // 16 KB
+
+const COACH_FIELDS = new Set([
+  'session_id',
+  'signals',
+  'messages',
+  'focus_state',
+  'focus_score',
+  'fatigue_state',
+  'fatigue_score',
+  'ignored_count',
+  'do_not_disturb',
+  'current_time'
+]);
+const FOCUS_STATES = ['Focused', 'Drifting', 'Lost'];
+const FATIGUE_STATES = ['Alert', 'Moderate', 'High', 'Critical'];
+
 /** @returns {{valid: boolean, errors: string[]}} */
 function validatePlannerPayload(payload) {
   const errors = [];
@@ -97,9 +119,122 @@ function validateBasicObjectWithFields(payload, requiredFields = []) {
   return { valid: errors.length === 0, errors };
 }
 
+/** Bounded CoachRequest validation (COACH-02) — Python mirror workers/schemas.py. */
+function validateCoachPayload(payload) {
+  const errors = [];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { valid: false, errors: ['payload must be an object'] };
+  }
+
+  // userId MUST come from the authenticated envelope context, never the body.
+  for (const key of Object.keys(payload)) {
+    if (!COACH_FIELDS.has(key)) {
+      errors.push(`unknown field: ${key}`);
+    }
+  }
+
+  if (payload.session_id !== undefined && payload.session_id !== null) {
+    if (typeof payload.session_id !== 'string' || !payload.session_id.trim()) {
+      errors.push('session_id must be a non-empty string');
+    } else if (payload.session_id.length > COACH_SESSION_ID_MAX_CHARS) {
+      errors.push(`session_id exceeds ${COACH_SESSION_ID_MAX_CHARS} chars`);
+    }
+  }
+
+  if (payload.signals !== undefined) {
+    if (!Array.isArray(payload.signals)) {
+      errors.push('signals must be an array');
+    } else if (payload.signals.length > COACH_MAX_SIGNALS) {
+      errors.push(`signals exceeds ${COACH_MAX_SIGNALS} items`);
+    } else {
+      for (const s of payload.signals) {
+        if (typeof s !== 'object' || s === null || Array.isArray(s)) {
+          errors.push('each signal must be an object');
+          continue;
+        }
+        if (typeof s.timestamp !== 'string' || Number.isNaN(Date.parse(s.timestamp))) {
+          errors.push('signal.timestamp must be an ISO 8601 string');
+        }
+        if (!FOCUS_STATES.includes(s.focus_state)) {
+          errors.push(`signal.focus_state must be one of: ${FOCUS_STATES.join(', ')}`);
+        }
+        if (!FATIGUE_STATES.includes(s.fatigue_state)) {
+          errors.push(`signal.fatigue_state must be one of: ${FATIGUE_STATES.join(', ')}`);
+        }
+        for (const k of ['focus_score', 'fatigue_score', 'focus_confidence', 'fatigue_confidence']) {
+          const v = s[k];
+          if (v === undefined || v === null) continue;
+          if (typeof v !== 'number' || v < 0 || v > 1) {
+            errors.push(`signal.${k} must be a number in [0, 1]`);
+          }
+        }
+        if (s.focus_trend !== undefined && s.focus_trend !== null && typeof s.focus_trend !== 'number') {
+          errors.push('signal.focus_trend must be a number');
+        }
+      }
+    }
+  }
+
+  if (payload.messages !== undefined) {
+    if (!Array.isArray(payload.messages)) {
+      errors.push('messages must be an array');
+    } else if (payload.messages.length > COACH_MAX_MESSAGES) {
+      errors.push(`messages exceeds ${COACH_MAX_MESSAGES} items`);
+    } else {
+      for (const m of payload.messages) {
+        if (typeof m !== 'object' || m === null || Array.isArray(m)) {
+          errors.push('each message must be an object');
+          continue;
+        }
+        if (m.role !== 'user' && m.role !== 'assistant') {
+          errors.push('message.role must be user or assistant');
+        }
+        const c = m.content;
+        if (typeof c !== 'string' || !c.trim()) {
+          errors.push('message.content must be a non-empty string');
+        } else if (c.length > COACH_MESSAGE_MAX_CHARS) {
+          errors.push(`message.content exceeds ${COACH_MESSAGE_MAX_CHARS} chars`);
+        }
+      }
+    }
+  }
+
+  for (const [k, states] of [['focus_state', FOCUS_STATES], ['fatigue_state', FATIGUE_STATES]]) {
+    const v = payload[k];
+    if (v !== undefined && v !== null && !states.includes(v)) {
+      errors.push(`${k} must be one of: ${states.join(', ')}`);
+    }
+  }
+  for (const k of ['focus_score', 'fatigue_score']) {
+    const v = payload[k];
+    if (v !== undefined && v !== null && (typeof v !== 'number' || v < 0 || v > 1)) {
+      errors.push(`${k} must be a number in [0, 1]`);
+    }
+  }
+  if (payload.ignored_count !== undefined && (!Number.isInteger(payload.ignored_count) || payload.ignored_count < 0)) {
+    errors.push('ignored_count must be an integer >= 0');
+  }
+  if (payload.do_not_disturb !== undefined && typeof payload.do_not_disturb !== 'boolean') {
+    errors.push('do_not_disturb must be a boolean');
+  }
+  if (
+    payload.current_time !== undefined && payload.current_time !== null &&
+    (typeof payload.current_time !== 'string' || Number.isNaN(Date.parse(payload.current_time)))
+  ) {
+    errors.push('current_time must be an ISO 8601 string');
+  }
+
+  const size = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  if (size > COACH_MAX_PAYLOAD_BYTES) {
+    errors.push(`payload exceeds ${COACH_MAX_PAYLOAD_BYTES} bytes (got ${size})`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 const VALIDATORS = {
   'study.plan.generate': validatePlannerPayload,
-  'study.coach.nudge': (p) => validateBasicObjectWithFields(p),
+  'study.coach.nudge': validateCoachPayload,
   'study.eval.step': (p) => validateBasicObjectWithFields(p, ['sessionId']),
   'study.search.query': (p) => validateBasicObjectWithFields(p, ['query']),
   'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef'])
@@ -115,12 +250,18 @@ function validateJobPayload(type, payload) {
 module.exports = {
   validateJobPayload,
   validatePlannerPayload,
+  validateCoachPayload,
   LIMITS: {
     GOAL_MAX_CHARS,
     CONCEPTS_MAX_ITEMS,
     CONCEPT_MAX_CHARS,
     AVAILABLE_MINUTES_MIN,
     AVAILABLE_MINUTES_MAX,
-    COURSE_ID_MAX_CHARS
+    COURSE_ID_MAX_CHARS,
+    COACH_SESSION_ID_MAX_CHARS,
+    COACH_MAX_SIGNALS,
+    COACH_MAX_MESSAGES,
+    COACH_MESSAGE_MAX_CHARS,
+    COACH_MAX_PAYLOAD_BYTES
   }
 };
