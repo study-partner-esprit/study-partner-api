@@ -15,12 +15,7 @@ const BLOOM_LEVELS = Object.freeze([
   'create'
 ]);
 
-const KNOWLEDGE_TYPES = Object.freeze([
-  'factual',
-  'conceptual',
-  'procedural',
-  'metacognitive'
-]);
+const KNOWLEDGE_TYPES = Object.freeze(['factual', 'conceptual', 'procedural', 'metacognitive']);
 
 const VERB_MAP = Object.freeze({
   remember: Object.freeze(['Define', 'List']),

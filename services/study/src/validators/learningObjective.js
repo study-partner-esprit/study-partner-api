@@ -9,8 +9,6 @@
  * rather than throwing — callers decide what to do with a rejection (e.g. log + 400).
  */
 
-// Adjust the relative path below to wherever this file actually lands
-// relative to repo-root shared/bloom/taxonomy.js
 const { BLOOM_LEVELS, KNOWLEDGE_TYPES, VERB_MAP } = require('../../../../shared/bloom/taxonomy');
 
 const TEXT_MAX_CHARS = 200;
@@ -72,9 +70,7 @@ function validateLearningObjective(payload) {
   if (bloomLevelValid) {
     const allowedVerbs = VERB_MAP[bloomLevel] || [];
     if (typeof verb !== 'string' || !allowedVerbs.includes(verb)) {
-      errors.push(
-        `verb must be one of: ${allowedVerbs.join(', ')} for bloomLevel "${bloomLevel}"`
-      );
+      errors.push(`verb must be one of: ${allowedVerbs.join(', ')} for bloomLevel "${bloomLevel}"`);
     }
   }
 
