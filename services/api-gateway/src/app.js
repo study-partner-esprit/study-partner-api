@@ -43,6 +43,8 @@ const OPENAPI_SPEC = {
     '/api/v1/study/tasks': { get: { summary: 'List tasks' }, post: { summary: 'Create task' } },
     '/api/v1/ai/plan/create': { post: { summary: 'Create AI-powered study plan' } },
     '/api/v1/ai/coach': { post: { summary: 'Get coach decision' } },
+    '/api/v1/coach/nudge': { post: { summary: 'Trigger async coach nudge (202 + jobId)' } },
+    '/api/v1/coach/jobs/{jobId}': { get: { summary: 'Get coach nudge job status + result' } },
     '/api/v1/ai/evaluator/session': { post: { summary: 'Evaluate completed session' } },
     '/api/v1/analytics/summary': { get: { summary: 'Get analytics summary' } },
     '/api/v1/notifications': {
@@ -186,6 +188,14 @@ app.use(
     pathRewrite: { '^/api/v1/ai': '/api/v1/ai' },
     proxyTimeout: 300000,
     timeout: 300000
+  })
+);
+app.use(
+  '/api/v1/coach',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: STUDY_SERVICE_URL,
+    pathRewrite: { '^/api/v1/coach': '/api/v1/coach' }
   })
 );
 app.use(
