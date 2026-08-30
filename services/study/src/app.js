@@ -7,6 +7,7 @@ const sessionRoutes = require('./routes/sessions');
 const subjectRoutes = require('./routes/subjects');
 const courseRoutes = require('./routes/courses');
 const planRoutes = require('./routes/plans');
+const coachRoutes = require('./routes/coach');
 const {
   corsMiddleware,
   securityMiddleware,
@@ -71,6 +72,7 @@ app.use('/api/v1/study/sessions', authenticate, sessionRoutes);
 app.use('/api/v1/study/subjects', authenticate, subjectRoutes);
 app.use('/api/v1/study/courses', authenticate, courseRoutes);
 app.use('/api/v1/study/plans', authenticate, planRoutes);
+app.use('/api/v1/coach', authenticate, coachRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
