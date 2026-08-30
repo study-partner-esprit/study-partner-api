@@ -69,6 +69,9 @@ jest.mock('../models/index', () => ({
 // Get the mocked models
 const { Course, StudyPlan, Task } = require('../models/index');
 const { validateLearningObjective } = require('../validators/learningObjective');
+const courseRoutes = require('../routes/courses');
+const planRoutes = require('../routes/plans');
+const learningObjectiveRoutes = require('../routes/learningObjectives');
 
 // Build app with routes
 const app = express();
@@ -80,13 +83,12 @@ const fakeAuth = (req, res, next) => {
   next();
 };
 
-const courseRoutes = require('../routes/courses');
-const planRoutes = require('../routes/plans');
-
 app.use('/api/v1/study/courses', fakeAuth, courseRoutes);
 app.use('/api/v1/study/plans', fakeAuth, planRoutes);
+app.use('/api/v1/study/learning-objectives', fakeAuth, learningObjectiveRoutes);
 
 const request = require('supertest');
+
 describe('learningObjective validator (F01)', () => {
   const base = {
     objectiveId: 'obj-1',
@@ -103,7 +105,7 @@ describe('learningObjective validator (F01)', () => {
     expect(result.errors).toEqual([]);
   });
 
-  test('rejects a verb not in the level\'s verb map', () => {
+  test("rejects a verb not in the level's verb map", () => {
     const result = validateLearningObjective({ ...base, verb: 'Design' });
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes('verb must be one of'))).toBe(true);
@@ -146,6 +148,36 @@ describe('learningObjective validator (F01)', () => {
     expect(result.errors.some((e) => e.includes('must appear at/near the start'))).toBe(true);
   });
 });
+
+describe('POST /api/v1/study/learning-objectives (route)', () => {
+  const validObjective = {
+    objectiveId: 'obj-route-1',
+    topicId: 'topic-1',
+    knowledgeType: 'conceptual',
+    bloomLevel: 'apply',
+    verb: 'Solve',
+    text: 'Solve systems of linear equations using substitution.'
+  };
+
+  test('returns 200 and echoes the objective when valid', async () => {
+    const res = await request(app).post('/api/v1/study/learning-objectives').send(validObjective);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Learning objective accepted');
+    expect(res.body.objective).toEqual(validObjective);
+  });
+
+  test('returns 400 with errors and does not create anything when invalid', async () => {
+    const invalidObjective = { ...validObjective, verb: 'Design' }; // wrong verb for 'apply'
+
+    const res = await request(app).post('/api/v1/study/learning-objectives').send(invalidObjective);
+
+    expect(res.status).toBe(400);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors.some((e) => e.includes('verb must be one of'))).toBe(true);
+  });
+});
+
 describe('Study Service', () => {
   beforeEach(() => jest.clearAllMocks());
 

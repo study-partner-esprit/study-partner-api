@@ -26,7 +26,7 @@ router.post(
       return res.status(400).json({ errors: result.errors });
     }
 
-    res.status(201).json({
+    res.status(200).json({
       message: 'Learning objective accepted',
       objective
     });
