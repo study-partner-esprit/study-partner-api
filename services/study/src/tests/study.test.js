@@ -68,6 +68,10 @@ jest.mock('../models/index', () => ({
 
 // Get the mocked models
 const { Course, StudyPlan, Task } = require('../models/index');
+const { validateLearningObjective } = require('../validators/learningObjective');
+const courseRoutes = require('../routes/courses');
+const planRoutes = require('../routes/plans');
+const learningObjectiveRoutes = require('../routes/learningObjectives');
 
 // Build app with routes
 const app = express();
@@ -79,13 +83,100 @@ const fakeAuth = (req, res, next) => {
   next();
 };
 
-const courseRoutes = require('../routes/courses');
-const planRoutes = require('../routes/plans');
-
 app.use('/api/v1/study/courses', fakeAuth, courseRoutes);
 app.use('/api/v1/study/plans', fakeAuth, planRoutes);
+app.use('/api/v1/study/learning-objectives', fakeAuth, learningObjectiveRoutes);
 
 const request = require('supertest');
+
+describe('learningObjective validator (F01)', () => {
+  const base = {
+    objectiveId: 'obj-1',
+    topicId: 'topic-1',
+    knowledgeType: 'conceptual',
+    bloomLevel: 'apply',
+    verb: 'Solve',
+    text: 'Solve systems of linear equations using substitution.'
+  };
+
+  test('accepts a valid objective', () => {
+    const result = validateLearningObjective(base);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("rejects a verb not in the level's verb map", () => {
+    const result = validateLearningObjective({ ...base, verb: 'Design' });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('verb must be one of'))).toBe(true);
+  });
+
+  test('rejects a bloomLevel outside the enum', () => {
+    const result = validateLearningObjective({ ...base, bloomLevel: 'memorize' });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('bloomLevel must be one of'))).toBe(true);
+  });
+
+  test('rejects non-measurable phrasing', () => {
+    const result = validateLearningObjective({
+      ...base,
+      verb: 'Solve',
+      text: 'Know how to solve systems of linear equations.'
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('non-measurable phrasing'))).toBe(true);
+  });
+
+  test('rejects empty text', () => {
+    const result = validateLearningObjective({ ...base, text: '' });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('text must be a non-empty string');
+  });
+
+  test('rejects text over 200 chars', () => {
+    const result = validateLearningObjective({ ...base, text: 'Solve ' + 'x'.repeat(200) });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('exceeds 200 chars'))).toBe(true);
+  });
+
+  test('rejects verb not near the start of text', () => {
+    const result = validateLearningObjective({
+      ...base,
+      text: 'Using substitution, systems of linear equations can be solved by students.'
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('must appear at/near the start'))).toBe(true);
+  });
+});
+
+describe('POST /api/v1/study/learning-objectives (route)', () => {
+  const validObjective = {
+    objectiveId: 'obj-route-1',
+    topicId: 'topic-1',
+    knowledgeType: 'conceptual',
+    bloomLevel: 'apply',
+    verb: 'Solve',
+    text: 'Solve systems of linear equations using substitution.'
+  };
+
+  test('returns 200 and echoes the objective when valid', async () => {
+    const res = await request(app).post('/api/v1/study/learning-objectives').send(validObjective);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Learning objective accepted');
+    expect(res.body.objective).toEqual(validObjective);
+  });
+
+  test('returns 400 with errors and does not create anything when invalid', async () => {
+    const invalidObjective = { ...validObjective, verb: 'Design' }; // wrong verb for 'apply'
+
+    const res = await request(app).post('/api/v1/study/learning-objectives').send(invalidObjective);
+
+    expect(res.status).toBe(400);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors.some((e) => e.includes('verb must be one of'))).toBe(true);
+  });
+});
 
 describe('Study Service', () => {
   beforeEach(() => jest.clearAllMocks());
