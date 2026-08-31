@@ -3,7 +3,7 @@
  * Limits must match the Python side exactly — contract drift fails CI.
  */
 
-const { validateJobPayload, validatePlannerPayload, validateCoachPayload, LIMITS } = require('../../shared/ai-messaging/payloadSchemas');
+const { validateJobPayload, validatePlannerPayload, validateCoachPayload, validateSessionStats, LIMITS } = require('../../shared/ai-messaging/payloadSchemas');
 const { AI_JOB_TYPES } = require('../../shared/ai-messaging/envelope');
 
 describe('validatePlannerPayload (study.plan.generate)', () => {
@@ -78,6 +78,13 @@ describe('validateCoachPayload (study.coach.nudge)', () => {
   test('accepts a full session context payload', () => {
     const res = validateCoachPayload({
       session_id: 'sess-123',
+      session_stats: {
+        progress_pct: 50,
+        minutes_elapsed: 25,
+        task_switches: 2,
+        break_count: 1,
+        current_streak_days: 4
+      },
       signals: [
         {
           timestamp: '2026-08-26T08:00:00Z',
@@ -145,5 +152,57 @@ describe('validateCoachPayload (study.coach.nudge)', () => {
     expect(validateCoachPayload({ do_not_disturb: 'yes' }).valid).toBe(false);
     expect(validateCoachPayload({ current_time: 'not-a-date' }).valid).toBe(false);
     expect(validateCoachPayload('just a string').valid).toBe(false);
+  });
+});
+
+describe('validateSessionStats (COACH-13)', () => {
+  const valid = {
+    progress_pct: 42,
+    minutes_elapsed: 25,
+    task_switches: 3,
+    break_count: 2,
+    current_streak_days: 7
+  };
+
+  test('accepts a fully bounded stats block', () => {
+    expect(validateCoachPayload({ session_stats: valid }).valid).toBe(true);
+    expect(validateSessionStats(valid, [])).toBeUndefined();
+  });
+
+  test('accepts the exact upper bound of every field', () => {
+    const atMax = {
+      progress_pct: LIMITS.SESSION_STATS_MAX_PROGRESS_PCT,
+      minutes_elapsed: LIMITS.SESSION_STATS_MAX_MINUTES_ELAPSED,
+      task_switches: LIMITS.SESSION_STATS_MAX_TASK_SWITCHES,
+      break_count: LIMITS.SESSION_STATS_MAX_BREAK_COUNT,
+      current_streak_days: LIMITS.SESSION_STATS_MAX_STREAK_DAYS
+    };
+    expect(validateCoachPayload({ session_stats: atMax }).valid).toBe(true);
+  });
+
+  test('rejects any field one past its bound', () => {
+    expect(
+      validateCoachPayload({ session_stats: { ...valid, progress_pct: LIMITS.SESSION_STATS_MAX_PROGRESS_PCT + 1 } }).valid
+    ).toBe(false);
+    expect(
+      validateCoachPayload({ session_stats: { ...valid, minutes_elapsed: LIMITS.SESSION_STATS_MAX_MINUTES_ELAPSED + 1 } }).valid
+    ).toBe(false);
+    expect(
+      validateCoachPayload({ session_stats: { ...valid, task_switches: LIMITS.SESSION_STATS_MAX_TASK_SWITCHES + 1 } }).valid
+    ).toBe(false);
+    expect(
+      validateCoachPayload({ session_stats: { ...valid, break_count: LIMITS.SESSION_STATS_MAX_BREAK_COUNT + 1 } }).valid
+    ).toBe(false);
+    expect(
+      validateCoachPayload({ session_stats: { ...valid, current_streak_days: LIMITS.SESSION_STATS_MAX_STREAK_DAYS + 1 } }).valid
+    ).toBe(false);
+  });
+
+  test('rejects negatives, floats, booleans and unknown fields', () => {
+    expect(validateCoachPayload({ session_stats: { ...valid, progress_pct: -1 } }).valid).toBe(false);
+    expect(validateCoachPayload({ session_stats: { ...valid, current_streak_days: 1.5 } }).valid).toBe(false);
+    expect(validateCoachPayload({ session_stats: { ...valid, break_count: true } }).valid).toBe(false);
+    expect(validateCoachPayload({ session_stats: { ...valid, hacked: 1 } }).valid).toBe(false);
+    expect(validateCoachPayload({ session_stats: 'nope' }).valid).toBe(false);
   });
 });
