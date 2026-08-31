@@ -22,8 +22,31 @@ const COACH_MAX_MESSAGES = 40;
 const COACH_MESSAGE_MAX_CHARS = 2000;
 const COACH_MAX_PAYLOAD_BYTES = 16 * 1024; // 16 KB
 
+// Coach session-stats bounds (COACH-13) — keep in sync with workers/schemas.py
+const SESSION_STATS_MAX_PROGRESS_PCT = 100;
+const SESSION_STATS_MAX_MINUTES_ELAPSED = 600;
+const SESSION_STATS_MAX_TASK_SWITCHES = 50;
+const SESSION_STATS_MAX_BREAK_COUNT = 20;
+const SESSION_STATS_MAX_STREAK_DAYS = 365;
+
+const SESSION_STATS_FIELDS = [
+  'progress_pct',
+  'minutes_elapsed',
+  'task_switches',
+  'break_count',
+  'current_streak_days'
+];
+const SESSION_STATS_BOUNDS = {
+  progress_pct: [0, SESSION_STATS_MAX_PROGRESS_PCT],
+  minutes_elapsed: [0, SESSION_STATS_MAX_MINUTES_ELAPSED],
+  task_switches: [0, SESSION_STATS_MAX_TASK_SWITCHES],
+  break_count: [0, SESSION_STATS_MAX_BREAK_COUNT],
+  current_streak_days: [0, SESSION_STATS_MAX_STREAK_DAYS]
+};
+
 const COACH_FIELDS = new Set([
   'session_id',
+  'session_stats',
   'signals',
   'messages',
   'focus_state',
@@ -119,6 +142,29 @@ function validateBasicObjectWithFields(payload, requiredFields = []) {
   return { valid: errors.length === 0, errors };
 }
 
+/** Validate the bounded COACH-13 session_stats block. */
+function validateSessionStats(stats, errors, prefix = 'session_stats') {
+  if (typeof stats !== 'object' || stats === null || Array.isArray(stats)) {
+    errors.push(`${prefix} must be an object`);
+    return;
+  }
+  for (const key of Object.keys(stats)) {
+    if (!SESSION_STATS_FIELDS.includes(key)) {
+      errors.push(`${prefix}.${key} is unknown`);
+      continue;
+    }
+    const v = stats[key];
+    if (!Number.isInteger(v)) {
+      errors.push(`${prefix}.${key} must be an integer`);
+      continue;
+    }
+    const [lo, hi] = SESSION_STATS_BOUNDS[key];
+    if (v < lo || v > hi) {
+      errors.push(`${prefix}.${key} must be an integer between ${lo} and ${hi}`);
+    }
+  }
+}
+
 /** Bounded CoachRequest validation (COACH-02) — Python mirror workers/schemas.py. */
 function validateCoachPayload(payload) {
   const errors = [];
@@ -139,6 +185,10 @@ function validateCoachPayload(payload) {
     } else if (payload.session_id.length > COACH_SESSION_ID_MAX_CHARS) {
       errors.push(`session_id exceeds ${COACH_SESSION_ID_MAX_CHARS} chars`);
     }
+  }
+
+  if (payload.session_stats !== undefined && payload.session_stats !== null) {
+    validateSessionStats(payload.session_stats, errors);
   }
 
   if (payload.signals !== undefined) {
@@ -251,6 +301,7 @@ module.exports = {
   validateJobPayload,
   validatePlannerPayload,
   validateCoachPayload,
+  validateSessionStats,
   LIMITS: {
     GOAL_MAX_CHARS,
     CONCEPTS_MAX_ITEMS,
@@ -262,6 +313,11 @@ module.exports = {
     COACH_MAX_SIGNALS,
     COACH_MAX_MESSAGES,
     COACH_MESSAGE_MAX_CHARS,
-    COACH_MAX_PAYLOAD_BYTES
+    COACH_MAX_PAYLOAD_BYTES,
+    SESSION_STATS_MAX_PROGRESS_PCT,
+    SESSION_STATS_MAX_MINUTES_ELAPSED,
+    SESSION_STATS_MAX_TASK_SWITCHES,
+    SESSION_STATS_MAX_BREAK_COUNT,
+    SESSION_STATS_MAX_STREAK_DAYS
   }
 };
