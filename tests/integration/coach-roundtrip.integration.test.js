@@ -130,7 +130,16 @@ d('COACH-11 coach round trip (real RabbitMQ)', () => {
       mode: 'focus',
       duration: 25,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      // COACH-13: give the session real stats so the nudge route derives a
+      // populated session_stats block whose bounds survive the bus end-to-end.
+      startTime: new Date(Date.now() - 10 * 60 * 1000),
+      taskProgress: {
+        currentTaskIndex: 1,
+        totalTasks: 2,
+        completedTasks: 1
+      },
+      breakStats: { totalBreaks: 1 }
     });
 
     conn = await amqp.connect(RABBITMQ_URL);
