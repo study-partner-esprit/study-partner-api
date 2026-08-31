@@ -20,10 +20,7 @@ const { logger } = require('@study-partner/shared');
 const { tierGate } = require('@study-partner/shared/tierGate');
 const { StudySession } = require('../models');
 const { validateCoachPayload } = require('@study-partner/shared/ai-messaging/payloadSchemas');
-
 const router = express.Router();
-
-const ORCHESTRATOR_URL = process.env.AI_ORCHESTRATOR_URL || 'http://ai-orchestrator-service:3004';
 
 // Mirrors COACH-02 limits (same bounds as validateCoachPayload).
 const nudgeSchema = Joi.object({
@@ -91,10 +88,13 @@ router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => 
 
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
 
+    const orchestratorUrl =
+      process.env.AI_ORCHESTRATOR_URL || 'http://ai-orchestrator-service:3004';
+
     let response;
     try {
       response = await axios.post(
-        `${ORCHESTRATOR_URL}/api/v1/ai/jobs`,
+        `${orchestratorUrl}/api/v1/ai/jobs`,
         { type: 'study.coach.nudge', payload },
         {
           headers: {
