@@ -29,6 +29,20 @@ const SESSION_STATS_MAX_TASK_SWITCHES = 50;
 const SESSION_STATS_MAX_BREAK_COUNT = 20;
 const SESSION_STATS_MAX_STREAK_DAYS = 365;
 
+// Schedule apply bounds (COACH-16) — keep in sync with workers/schemas.py
+const SCHEDULE_MAX_AFFECTED_TASK_IDS = 20;
+const SCHEDULE_MAX_DURATION_MINUTES = 24 * 60;
+const SCHEDULE_REASONING_MAX_CHARS = 500;
+const SCHEDULE_MAX_PAYLOAD_BYTES = 4 * 1024;
+
+const SCHEDULE_ACTIONS = [
+  'add_break',
+  'extend_task',
+  'reschedule_task',
+  'cancel_task',
+  'suspend_session'
+];
+
 const SESSION_STATS_FIELDS = [
   'progress_pct',
   'minutes_elapsed',
@@ -282,12 +296,86 @@ function validateCoachPayload(payload) {
   return { valid: errors.length === 0, errors };
 }
 
+/** Bounded ScheduleApplyRequest validation (COACH-16) — Python mirror. */
+const SCHEDULE_FIELDS = new Set([
+  'action',
+  'duration_minutes',
+  'new_start_time',
+  'affected_task_ids',
+  'reasoning'
+]);
+
+function validateScheduleApplyPayload(payload) {
+  const errors = [];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { valid: false, errors: ['payload must be an object'] };
+  }
+
+  // userId MUST come from the authenticated envelope context, never the body.
+  for (const key of Object.keys(payload)) {
+    if (!SCHEDULE_FIELDS.has(key)) {
+      errors.push(`unknown field: ${key}`);
+    }
+  }
+
+  if (!SCHEDULE_ACTIONS.includes(payload.action)) {
+    errors.push(`action must be one of: ${SCHEDULE_ACTIONS.join(', ')}`);
+  }
+
+  if (payload.duration_minutes !== undefined && payload.duration_minutes !== null) {
+    if (!Number.isInteger(payload.duration_minutes) || payload.duration_minutes < 1 ||
+        payload.duration_minutes > SCHEDULE_MAX_DURATION_MINUTES) {
+      errors.push(
+        `duration_minutes must be an integer between 1 and ${SCHEDULE_MAX_DURATION_MINUTES}`
+      );
+    }
+  }
+
+  if (payload.new_start_time !== undefined && payload.new_start_time !== null) {
+    if (typeof payload.new_start_time !== 'string' ||
+        Number.isNaN(Date.parse(payload.new_start_time))) {
+      errors.push('new_start_time must be an ISO 8601 string');
+    }
+  }
+
+  if (payload.affected_task_ids !== undefined) {
+    if (!Array.isArray(payload.affected_task_ids)) {
+      errors.push('affected_task_ids must be an array');
+    } else if (payload.affected_task_ids.length > SCHEDULE_MAX_AFFECTED_TASK_IDS) {
+      errors.push(`affected_task_ids exceeds ${SCHEDULE_MAX_AFFECTED_TASK_IDS} items`);
+    } else {
+      for (const id of payload.affected_task_ids) {
+        if (typeof id !== 'string' || !id.trim()) {
+          errors.push('each affected_task_id must be a non-empty string');
+          break;
+        }
+      }
+    }
+  }
+
+  if (payload.reasoning !== undefined && payload.reasoning !== null) {
+    if (typeof payload.reasoning !== 'string') {
+      errors.push('reasoning must be a string');
+    } else if (payload.reasoning.length > SCHEDULE_REASONING_MAX_CHARS) {
+      errors.push(`reasoning exceeds ${SCHEDULE_REASONING_MAX_CHARS} chars`);
+    }
+  }
+
+  const size = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  if (size > SCHEDULE_MAX_PAYLOAD_BYTES) {
+    errors.push(`payload exceeds ${SCHEDULE_MAX_PAYLOAD_BYTES} bytes (got ${size})`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 const VALIDATORS = {
   'study.plan.generate': validatePlannerPayload,
   'study.coach.nudge': validateCoachPayload,
   'study.eval.step': (p) => validateBasicObjectWithFields(p, ['sessionId']),
   'study.search.query': (p) => validateBasicObjectWithFields(p, ['query']),
-  'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef'])
+  'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef']),
+  'study.schedule.apply': validateScheduleApplyPayload
 };
 
 /** Validate a job payload for the given type. Unknown types pass through. */
@@ -302,6 +390,7 @@ module.exports = {
   validatePlannerPayload,
   validateCoachPayload,
   validateSessionStats,
+  validateScheduleApplyPayload,
   LIMITS: {
     GOAL_MAX_CHARS,
     CONCEPTS_MAX_ITEMS,
@@ -318,6 +407,10 @@ module.exports = {
     SESSION_STATS_MAX_MINUTES_ELAPSED,
     SESSION_STATS_MAX_TASK_SWITCHES,
     SESSION_STATS_MAX_BREAK_COUNT,
-    SESSION_STATS_MAX_STREAK_DAYS
+    SESSION_STATS_MAX_STREAK_DAYS,
+    SCHEDULE_MAX_AFFECTED_TASK_IDS,
+    SCHEDULE_MAX_DURATION_MINUTES,
+    SCHEDULE_REASONING_MAX_CHARS,
+    SCHEDULE_MAX_PAYLOAD_BYTES
   }
 };

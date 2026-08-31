@@ -3,7 +3,7 @@
  * Limits must match the Python side exactly — contract drift fails CI.
  */
 
-const { validateJobPayload, validatePlannerPayload, validateCoachPayload, validateSessionStats, LIMITS } = require('../../shared/ai-messaging/payloadSchemas');
+const { validateJobPayload, validatePlannerPayload, validateCoachPayload, validateSessionStats, validateScheduleApplyPayload, LIMITS } = require('../../shared/ai-messaging/payloadSchemas');
 const { AI_JOB_TYPES } = require('../../shared/ai-messaging/envelope');
 
 describe('validatePlannerPayload (study.plan.generate)', () => {
@@ -152,6 +152,67 @@ describe('validateCoachPayload (study.coach.nudge)', () => {
     expect(validateCoachPayload({ do_not_disturb: 'yes' }).valid).toBe(false);
     expect(validateCoachPayload({ current_time: 'not-a-date' }).valid).toBe(false);
     expect(validateCoachPayload('just a string').valid).toBe(false);
+  });
+});
+
+describe('validateScheduleApplyPayload (study.schedule.apply / COACH-16)', () => {
+  const valid = { action: 'add_break', duration_minutes: 10, affected_task_ids: ['t1'], reasoning: 'coach suggested a break' };
+
+  test('accepts a valid payload via the job router', () => {
+    expect(validateJobPayload('study.schedule.apply', valid)).toEqual({ valid: true, errors: [] });
+    expect(validateScheduleApplyPayload(valid)).toEqual({ valid: true, errors: [] });
+  });
+
+  test('accepts empty optionals and the exact upper bounds', () => {
+    expect(validateScheduleApplyPayload({ action: 'suspend_session' }).valid).toBe(true);
+    expect(
+      validateScheduleApplyPayload({ ...valid, duration_minutes: LIMITS.SCHEDULE_MAX_DURATION_MINUTES }).valid
+    ).toBe(true);
+    expect(
+      validateScheduleApplyPayload({
+        ...valid,
+        affected_task_ids: Array.from({ length: LIMITS.SCHEDULE_MAX_AFFECTED_TASK_IDS }, (_, i) => `t${i}`)
+      }).valid
+    ).toBe(true);
+    expect(validateScheduleApplyPayload({ ...valid, reasoning: 'x'.repeat(LIMITS.SCHEDULE_REASONING_MAX_CHARS) }).valid).toBe(true);
+  });
+
+  test('rejects unknown action, unknown fields and non-objects', () => {
+    expect(validateScheduleApplyPayload({ action: 'delete_everything' }).valid).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, hacked: 1 }).valid).toBe(false);
+    expect(validateScheduleApplyPayload('nope').valid).toBe(false);
+    expect(validateScheduleApplyPayload([1]).valid).toBe(false);
+  });
+
+  test('rejects duration bounds, floats and booleans', () => {
+    expect(validateScheduleApplyPayload({ ...valid, duration_minutes: 0 }).valid).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, duration_minutes: LIMITS.SCHEDULE_MAX_DURATION_MINUTES + 1 }).valid).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, duration_minutes: 1.5 }).valid).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, duration_minutes: true }).valid).toBe(false);
+  });
+
+  test('rejects affected_task_ids overflow, blanks and non-strings', () => {
+    expect(
+      validateScheduleApplyPayload({
+        ...valid,
+        affected_task_ids: Array.from({ length: LIMITS.SCHEDULE_MAX_AFFECTED_TASK_IDS + 1 }, (_, i) => `t${i}`)
+      }).valid
+    ).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, affected_task_ids: ['  '] }).valid).toBe(false);
+    expect(validateScheduleApplyPayload({ ...valid, affected_task_ids: [true] }).valid).toBe(false);
+  });
+
+  test('accepts ISO new_start_time and rejects garbage', () => {
+    expect(validateScheduleApplyPayload({ ...valid, action: 'reschedule_task', new_start_time: '2026-08-31T15:00:00Z' }).valid).toBe(true);
+    expect(validateScheduleApplyPayload({ ...valid, new_start_time: 'garbage' }).valid).toBe(false);
+  });
+
+  test('caps total payload size', () => {
+    expect(validateScheduleApplyPayload({ ...valid, reasoning: 'x'.repeat(LIMITS.SCHEDULE_MAX_PAYLOAD_BYTES) }).valid).toBe(false);
+  });
+
+  test('rejects userId in the schedule body (identity comes from envelope)', () => {
+    expect(validateScheduleApplyPayload({ ...valid, userId: 'u' }).valid).toBe(false);
   });
 });
 
