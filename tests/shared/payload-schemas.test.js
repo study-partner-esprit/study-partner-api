@@ -3,7 +3,12 @@
  * Limits must match the Python side exactly — contract drift fails CI.
  */
 
-const { validateJobPayload, validatePlannerPayload, LIMITS } = require('../../shared/ai-messaging/payloadSchemas');
+const {
+  validateJobPayload,
+  validatePlannerPayload,
+  validateKnowledgeExtractPayload,
+  LIMITS
+} = require('../../shared/ai-messaging/payloadSchemas');
 const { AI_JOB_TYPES } = require('../../shared/ai-messaging/envelope');
 
 describe('validatePlannerPayload (study.plan.generate)', () => {
@@ -19,7 +24,9 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
 
   test('rejects over-length goal at the exact Python limit', () => {
     expect(validatePlannerPayload({ goal: 'x'.repeat(LIMITS.GOAL_MAX_CHARS) }).valid).toBe(true);
-    expect(validatePlannerPayload({ goal: 'x'.repeat(LIMITS.GOAL_MAX_CHARS + 1) }).valid).toBe(false);
+    expect(validatePlannerPayload({ goal: 'x'.repeat(LIMITS.GOAL_MAX_CHARS + 1) }).valid).toBe(
+      false
+    );
   });
 
   test('rejects blank and non-string goals', () => {
@@ -33,7 +40,8 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
     const many = Array.from({ length: LIMITS.CONCEPTS_MAX_ITEMS + 1 }, (_, i) => `c${i}`);
     expect(validatePlannerPayload({ goal: 'g', concepts: many }).valid).toBe(false);
     expect(
-      validatePlannerPayload({ goal: 'g', concepts: ['x'.repeat(LIMITS.CONCEPT_MAX_CHARS + 1)] }).valid
+      validatePlannerPayload({ goal: 'g', concepts: ['x'.repeat(LIMITS.CONCEPT_MAX_CHARS + 1)] })
+        .valid
     ).toBe(false);
     expect(validatePlannerPayload({ goal: 'g', concepts: [42] }).valid).toBe(false);
   });
@@ -43,7 +51,8 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
     expect(validatePlannerPayload({ goal: 'g', available_minutes: 0 }).valid).toBe(false);
     expect(validatePlannerPayload({ goal: 'g', available_minutes: 1.5 }).valid).toBe(false);
     expect(
-      validatePlannerPayload({ goal: 'g', available_minutes: LIMITS.AVAILABLE_MINUTES_MAX + 1 }).valid
+      validatePlannerPayload({ goal: 'g', available_minutes: LIMITS.AVAILABLE_MINUTES_MAX + 1 })
+        .valid
     ).toBe(false);
   });
 
@@ -55,6 +64,24 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
 });
 
 describe('validateJobPayload routing', () => {
+  test('knowledge.extract requires documentId, courseId and contentRef (BLOOM-03)', () => {
+    expect(
+      validateJobPayload('study.knowledge.extract', {
+        documentId: 'doc-1',
+        courseId: 'c-1',
+        contentRef: 's3://bucket/obj'
+      }).valid
+    ).toBe(true);
+    // raw content is never inline — only references are allowed
+    expect(validateJobPayload('study.knowledge.extract', {}).valid).toBe(false);
+    expect(validateJobPayload('study.knowledge.extract', { documentId: 'doc-1' }).valid).toBe(
+      false
+    );
+    expect(
+      validateJobPayload('study.knowledge.extract', { documentId: 'doc-1', courseId: 'c-1' }).valid
+    ).toBe(false);
+  });
+
   test('plan type uses strict validator; other types keep basic rules', () => {
     // eval still requires sessionId (EVAL-02 basic rule preserved)
     expect(validateJobPayload('study.eval.step', {}).valid).toBe(false);
@@ -67,5 +94,50 @@ describe('validateJobPayload routing', () => {
     for (const type of AI_JOB_TYPES) {
       expect(typeof validateJobPayload(type, {})).toBe('object');
     }
+  });
+});
+
+describe('validateKnowledgeExtractPayload (BLOOM-03)', () => {
+  test('accepts a valid payload with all three references', () => {
+    expect(
+      validateKnowledgeExtractPayload({
+        documentId: 'doc-1',
+        courseId: 'c-1',
+        contentRef: 'gcs://bucket/obj'
+      })
+    ).toEqual({ valid: true, errors: [] });
+  });
+
+  test('rejects missing or blank references', () => {
+    expect(validateKnowledgeExtractPayload({}).valid).toBe(false);
+    expect(
+      validateKnowledgeExtractPayload({ documentId: 'd', courseId: 'c', contentRef: '' }).valid
+    ).toBe(false);
+    expect(
+      validateKnowledgeExtractPayload({ documentId: '  ', courseId: 'c', contentRef: 'r' }).valid
+    ).toBe(false);
+    expect(
+      validateKnowledgeExtractPayload({ documentId: 'd', courseId: '  ', contentRef: 'r' }).valid
+    ).toBe(false);
+  });
+
+  test('rejects over-length references and non-objects', () => {
+    expect(
+      validateKnowledgeExtractPayload({
+        documentId: 'x'.repeat(LIMITS.DOCUMENT_ID_MAX_CHARS + 1),
+        courseId: 'c',
+        contentRef: 'r'
+      }).valid
+    ).toBe(false);
+    expect(
+      validateKnowledgeExtractPayload({
+        documentId: 'd',
+        courseId: 'c',
+        contentRef: 'x'.repeat(LIMITS.CONTENT_REF_MAX_CHARS + 1)
+      }).valid
+    ).toBe(false);
+    expect(validateKnowledgeExtractPayload(null).valid).toBe(false);
+    expect(validateKnowledgeExtractPayload('str').valid).toBe(false);
+    expect(validateKnowledgeExtractPayload([1]).valid).toBe(false);
   });
 });

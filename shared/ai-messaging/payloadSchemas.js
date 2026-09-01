@@ -14,6 +14,8 @@ const CONCEPT_MAX_CHARS = 100;
 const AVAILABLE_MINUTES_MIN = 1;
 const AVAILABLE_MINUTES_MAX = 7 * 24 * 60; // one week
 const COURSE_ID_MAX_CHARS = 64;
+const DOCUMENT_ID_MAX_CHARS = 64;
+const CONTENT_REF_MAX_CHARS = 256;
 
 /** @returns {{valid: boolean, errors: string[]}} */
 function validatePlannerPayload(payload) {
@@ -57,10 +59,7 @@ function validatePlannerPayload(payload) {
   }
 
   if (payload.deadline !== undefined && payload.deadline !== null) {
-    if (
-      typeof payload.deadline !== 'string' ||
-      Number.isNaN(Date.parse(payload.deadline))
-    ) {
+    if (typeof payload.deadline !== 'string' || Number.isNaN(Date.parse(payload.deadline))) {
       errors.push('deadline must be an ISO 8601 date string');
     }
   }
@@ -97,12 +96,48 @@ function validateBasicObjectWithFields(payload, requiredFields = []) {
   return { valid: errors.length === 0, errors };
 }
 
+/** Validate the input contract for `study.knowledge.extract` jobs (BLOOM-03). */
+function validateKnowledgeExtractPayload(payload) {
+  // BLOOM-03: input contract { documentId, courseId, contentRef }. Raw content
+  // is loaded from storage by the worker — never inline in the envelope — so
+  // only reference fields are required here.
+  const errors = [];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { valid: false, errors: ['payload must be an object'] };
+  }
+
+  const documentId = payload.documentId;
+  const courseId = payload.courseId;
+  const contentRef = payload.contentRef;
+
+  if (
+    typeof documentId !== 'string' ||
+    !documentId.trim() ||
+    documentId.length > DOCUMENT_ID_MAX_CHARS
+  ) {
+    errors.push(`documentId must be a non-empty string of at most ${DOCUMENT_ID_MAX_CHARS} chars`);
+  }
+  if (typeof courseId !== 'string' || !courseId.trim() || courseId.length > COURSE_ID_MAX_CHARS) {
+    errors.push(`courseId must be a non-empty string of at most ${COURSE_ID_MAX_CHARS} chars`);
+  }
+  if (
+    typeof contentRef !== 'string' ||
+    !contentRef.trim() ||
+    contentRef.length > CONTENT_REF_MAX_CHARS
+  ) {
+    errors.push(`contentRef must be a non-empty string of at most ${CONTENT_REF_MAX_CHARS} chars`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 const VALIDATORS = {
   'study.plan.generate': validatePlannerPayload,
   'study.coach.nudge': (p) => validateBasicObjectWithFields(p),
   'study.eval.step': (p) => validateBasicObjectWithFields(p, ['sessionId']),
   'study.search.query': (p) => validateBasicObjectWithFields(p, ['query']),
-  'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef'])
+  'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef']),
+  'study.knowledge.extract': validateKnowledgeExtractPayload
 };
 
 /** Validate a job payload for the given type. Unknown types pass through. */
@@ -115,12 +150,15 @@ function validateJobPayload(type, payload) {
 module.exports = {
   validateJobPayload,
   validatePlannerPayload,
+  validateKnowledgeExtractPayload,
   LIMITS: {
     GOAL_MAX_CHARS,
     CONCEPTS_MAX_ITEMS,
     CONCEPT_MAX_CHARS,
     AVAILABLE_MINUTES_MIN,
     AVAILABLE_MINUTES_MAX,
-    COURSE_ID_MAX_CHARS
+    COURSE_ID_MAX_CHARS,
+    DOCUMENT_ID_MAX_CHARS,
+    CONTENT_REF_MAX_CHARS
   }
 };

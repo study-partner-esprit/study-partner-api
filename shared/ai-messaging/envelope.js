@@ -17,7 +17,8 @@ const AI_JOB_TYPES = Object.freeze([
   'study.coach.nudge',
   'study.eval.step',
   'study.search.query',
-  'study.ingest.course'
+  'study.ingest.course',
+  'study.knowledge.extract'
 ]);
 
 const JOB_STATUSES = Object.freeze(['PENDING', 'PROCESSING', 'RETRYING', 'COMPLETED', 'FAILED']);
