@@ -11,6 +11,7 @@ const {
 } = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
 const jobsRoutes = require('./routes/jobs');
+const evalRoutes = require('./routes/eval');
 
 // --- Environment validation (fail-fast on missing secrets) ---
 const REQUIRED_ENV = ['JWT_SECRET'];
@@ -75,6 +76,11 @@ app.use('/api/v1/ai', authenticate, aiRoutes);
 
 // Async AI job endpoints (F01): create/poll jobs instead of sync LLM waits
 app.use('/api/v1/ai', authenticate, jobsRoutes);
+
+// Eval API (F04 / EVAL-09): async Socratic step jobs — the submit is the
+// LLM-heavy call so it gets the strict AI rate limit; polling reads stay open.
+app.use('/api/v1/eval/step', aiRateLimiter);
+app.use('/api/v1/eval', authenticate, evalRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
