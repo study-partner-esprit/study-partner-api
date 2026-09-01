@@ -54,6 +54,33 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
   });
 });
 
+describe('study.eval.step objectiveId parity (EVAL-08)', () => {
+  test('accepts an optional objectiveId', () => {
+    expect(
+      validateJobPayload('study.eval.step', { sessionId: 's', objectiveId: 'obj-1' }).valid
+    ).toBe(true);
+  });
+
+  test('rejects a blank objectiveId when provided', () => {
+    expect(
+      validateJobPayload('study.eval.step', { sessionId: 's', objectiveId: '   ' }).valid
+    ).toBe(false);
+  });
+
+  test('rejects an over-long objectiveId at the Python limit', () => {
+    expect(
+      validateJobPayload('study.eval.step', {
+        sessionId: 's',
+        objectiveId: 'x'.repeat(LIMITS.COURSE_ID_MAX_CHARS + 1)
+      }).valid
+    ).toBe(false);
+  });
+
+  test('eval still requires sessionId', () => {
+    expect(validateJobPayload('study.eval.step', { objectiveId: 'obj-1' }).valid).toBe(false);
+  });
+});
+
 describe('validateJobPayload routing', () => {
   test('plan type uses strict validator; other types keep basic rules', () => {
     // eval still requires sessionId (EVAL-02 basic rule preserved)
