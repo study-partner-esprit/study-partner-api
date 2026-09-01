@@ -57,10 +57,7 @@ function validatePlannerPayload(payload) {
   }
 
   if (payload.deadline !== undefined && payload.deadline !== null) {
-    if (
-      typeof payload.deadline !== 'string' ||
-      Number.isNaN(Date.parse(payload.deadline))
-    ) {
+    if (typeof payload.deadline !== 'string' || Number.isNaN(Date.parse(payload.deadline))) {
       errors.push('deadline must be an ISO 8601 date string');
     }
   }
@@ -97,10 +94,25 @@ function validateBasicObjectWithFields(payload, requiredFields = []) {
   return { valid: errors.length === 0, errors };
 }
 
+/** eval (F04 / EVAL-08): optional objectiveId matches the Python mirror —
+ *  blank/over-length values are rejected, absent is fine. */
+function validateEvalPayload(payload) {
+  const base = validateBasicObjectWithFields(payload, ['sessionId']);
+  const errors = [...base.errors];
+  if (payload.objectiveId !== undefined && payload.objectiveId !== null) {
+    if (typeof payload.objectiveId !== 'string' || !payload.objectiveId.trim()) {
+      errors.push('objectiveId must be a non-empty string when provided');
+    } else if (payload.objectiveId.length > COURSE_ID_MAX_CHARS) {
+      errors.push(`objectiveId exceeds ${COURSE_ID_MAX_CHARS} chars`);
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 const VALIDATORS = {
   'study.plan.generate': validatePlannerPayload,
   'study.coach.nudge': (p) => validateBasicObjectWithFields(p),
-  'study.eval.step': (p) => validateBasicObjectWithFields(p, ['sessionId']),
+  'study.eval.step': validateEvalPayload,
   'study.search.query': (p) => validateBasicObjectWithFields(p, ['query']),
   'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef'])
 };
