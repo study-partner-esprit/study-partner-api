@@ -3,6 +3,7 @@ const Joi = require('joi');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { StudyPlan, Task, Course } = require('../models');
+const { getWeakCompetenciesForCourse } = require('../services/competencyQueries');
 const { tierGate } = require('@study-partner/shared/tierGate');
 const { logger } = require('@study-partner/shared');
 
@@ -61,6 +62,15 @@ router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
     const messageId = crypto.randomUUID();
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
 
+    // BLOOM-10: weakest-first targeting input for the planner. Fetched from the
+    // user's competency profile scoped to this course; [] degrades gracefully.
+    let weakCompetencies = [];
+    try {
+      weakCompetencies = await getWeakCompetenciesForCourse(userId, courseId);
+    } catch (err) {
+      logger.warn('plan_weak_competencies_fetch_failed', { error: err.message });
+    }
+
     // Call the orchestrator's POST /jobs route — it creates the AiJob
     // (for result correlation) AND publishes to the bus in one shot.
     const axios = require('axios');
@@ -76,7 +86,8 @@ router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
             goal,
             available_minutes: availableTimeMinutes,
             courseId: courseId || undefined,
-            concepts: []
+            concepts: [],
+            weak_competencies: weakCompetencies
           }
         },
         {
@@ -158,11 +169,12 @@ router.post('/create-status', async (req, res) => {
         studyPlanId: studyPlan._id.toString(),
         title: taskData.title,
         description: taskData.description,
-        priority:
-          taskData.difficulty < 0.4 ? 'low' : taskData.difficulty < 0.7 ? 'medium' : 'high',
+        priority: taskData.difficulty < 0.4 ? 'low' : taskData.difficulty < 0.7 ? 'medium' : 'high',
         estimatedTime: taskData.estimated_minutes,
         tags: [goal.substring(0, 50)],
-        status: 'todo'
+        status: 'todo',
+        objectiveId: taskData.objective_id || undefined,
+        targetBloomLevel: taskData.target_bloom_level || undefined
       });
       createdTasks.push(task);
     }
