@@ -295,7 +295,8 @@ const courseSchema = new mongoose.Schema(
             ],
             formulas: [String],
             examples: [String],
-            tokenized_chunks: [String]
+            tokenized_chunks: [String],
+            learning_objectives: [mongoose.Schema.Types.Mixed]
           }
         ]
       }
@@ -317,6 +318,121 @@ const courseSchema = new mongoose.Schema(
     aiCourseId: {
       type: String,
       index: true // Link to AI service course record
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+const learningObjectiveSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true
+    },
+    documentId: {
+      type: String,
+      required: true
+    },
+    objectiveId: {
+      type: String,
+      required: true
+    },
+    topicId: {
+      type: String,
+      required: true
+    },
+    knowledgeType: {
+      type: String,
+      required: true
+    },
+    bloomLevel: {
+      type: String,
+      required: true
+    },
+    verb: {
+      type: String,
+      required: true
+    },
+    text: {
+      type: String,
+      required: true
+    },
+    textHash: {
+      type: String,
+      required: true
+    },
+    version: {
+      type: Number,
+      default: 1
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+    supersededAt: {
+      type: Date
+    },
+    classification: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+const competencyProfileSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true
+    },
+    topicId: {
+      type: String,
+      required: true
+    },
+    knowledgeType: {
+      type: String,
+      required: true
+    },
+    bloomLevel: {
+      type: String,
+      required: true
+    },
+    score: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      max: 1
+    },
+    confidence: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      max: 1
+    },
+    evidence: {
+      type: [
+        {
+          objectiveId: String,
+          demonstratedBloomLevel: String,
+          masteryScore: Number,
+          evaluatedAt: Date,
+          correlationId: String
+        }
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          return v.length <= 20;
+        },
+        message: 'Evidence array capped at 20 entries'
+      }
     }
   },
   {
@@ -382,11 +498,42 @@ studySessionSchema.index({ userId: 1, completedAt: -1 });
 studySessionSchema.index({ userId: 1, status: 1, createdAt: -1 });
 taskSchema.index({ userId: 1, status: 1, createdAt: -1 });
 
+// BLOOM-06: learning objective indexes
+learningObjectiveSchema.index({ topicId: 1, bloomLevel: 1 });
+learningObjectiveSchema.index({ documentId: 1 });
+learningObjectiveSchema.index({ documentId: 1, topicId: 1, textHash: 1 }, { unique: true });
+
+// BLOOM-07: competency profile indexes
+competencyProfileSchema.index({ userId: 1, topicId: 1 });
+competencyProfileSchema.index(
+  { userId: 1, topicId: 1, knowledgeType: 1, bloomLevel: 1 },
+  { unique: true }
+);
+
 const StudySession = mongoose.model('StudySession', studySessionSchema);
 const Task = mongoose.model('Task', taskSchema);
 const Topic = mongoose.model('Topic', topicSchema);
 const Subject = mongoose.model('Subject', subjectSchema);
 const Course = mongoose.model('Course', courseSchema);
 const StudyPlan = mongoose.model('StudyPlan', studyPlanSchema);
+const LearningObjective = mongoose.model(
+  'LearningObjective',
+  learningObjectiveSchema,
+  'learning_objectives'
+);
+const CompetencyProfile = mongoose.model(
+  'CompetencyProfile',
+  competencyProfileSchema,
+  'competency_profiles'
+);
 
-module.exports = { StudySession, Task, Topic, Subject, Course, StudyPlan };
+module.exports = {
+  StudySession,
+  Task,
+  Topic,
+  Subject,
+  Course,
+  StudyPlan,
+  LearningObjective,
+  CompetencyProfile
+};
