@@ -5,6 +5,10 @@ const { Course, Subject } = require('../models');
 const axios = require('axios');
 const FormData = require('form-data');
 const { tierGate } = require('@study-partner/shared/tierGate');
+const {
+  syncObjectivesForDocument,
+  deleteObjectivesForDocument
+} = require('../services/objectives');
 
 const router = express.Router();
 
@@ -160,7 +164,8 @@ router.post(
             definitions: sub.definitions || [],
             formulas: sub.formulas || [],
             examples: sub.examples || [],
-            tokenized_chunks: sub.tokenized_chunks || []
+            tokenized_chunks: sub.tokenized_chunks || [],
+            learning_objectives: sub.learning_objectives || []
           }))
         }));
 
@@ -172,6 +177,26 @@ router.post(
         await course.save();
 
         console.log('Course saved with', transformedTopics.length, 'topics');
+
+        // BLOOM-06: persist learning objectives to separate collection
+        try {
+          const objStats = await syncObjectivesForDocument({
+            userId,
+            documentId: course._id.toString(),
+            topics: transformedTopics
+          });
+          console.log(
+            'Learning objectives synced:',
+            objStats.inserted,
+            'inserted,',
+            objStats.updated,
+            'updated,',
+            objStats.superseded,
+            'superseded'
+          );
+        } catch (objErr) {
+          console.warn('Learning objective sync failed (non-fatal):', objErr.message);
+        }
 
         // Auto-award XP on course upload
         try {
@@ -306,6 +331,13 @@ router.delete('/:courseId', async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
+    // BLOOM-06: remove learning objectives for deleted course
+    try {
+      await deleteObjectivesForDocument(course._id.toString());
+    } catch (objErr) {
+      console.warn('Learning objective cleanup failed (non-fatal):', objErr.message);
+    }
+
     res.json({ message: 'Course deleted successfully' });
   } catch (error) {
     console.error('Error deleting course:', error);
@@ -391,11 +423,45 @@ router.post(
           timeout: 300000 // 5 minutes timeout
         });
 
-        // Update course with re-processed data
-        course.topics = aiResponse.data.topics || [];
+        // Update course with re-processed data (carry learning_objectives)
+        const aiTopics = aiResponse.data.topics || [];
+        course.topics = aiTopics.map((topic) => ({
+          title: topic.title,
+          subtopics: (topic.subtopics || []).map((sub) => ({
+            id: sub.id,
+            title: sub.title,
+            summary: sub.summary,
+            key_concepts: sub.key_concepts || [],
+            definitions: sub.definitions || [],
+            formulas: sub.formulas || [],
+            examples: sub.examples || [],
+            tokenized_chunks: sub.tokenized_chunks || [],
+            learning_objectives: sub.learning_objectives || []
+          }))
+        }));
         course.status = 'completed';
         course.processedAt = new Date();
         await course.save();
+
+        // BLOOM-06: persist learning objectives (version bump + supersede)
+        try {
+          const objStats = await syncObjectivesForDocument({
+            userId,
+            documentId: course._id.toString(),
+            topics: course.topics
+          });
+          console.log(
+            'Learning objectives re-synced:',
+            objStats.inserted,
+            'inserted,',
+            objStats.updated,
+            'updated,',
+            objStats.superseded,
+            'superseded'
+          );
+        } catch (objErr) {
+          console.warn('Learning objective sync failed (non-fatal):', objErr.message);
+        }
 
         // Clean up uploaded files
         req.files.forEach((file) => {
