@@ -20,6 +20,7 @@ const evalResultSchema = new mongoose.Schema(
   {
     correlationId: { type: String, required: true, unique: true },
     messageId: { type: String, required: true },
+    userId: { type: String, required: true, index: true },
     sessionId: { type: String, required: true, index: true },
     step: { type: Number, required: true },
     status: {

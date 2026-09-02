@@ -20,6 +20,7 @@ async function upsertByCorrelation(record) {
   const doc = {
     correlationId: record.correlationId,
     messageId: record.messageId,
+    userId: record.userId,
     sessionId: record.sessionId,
     step: record.step,
     status: record.status,
