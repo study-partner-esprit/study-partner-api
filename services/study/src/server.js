@@ -12,20 +12,26 @@ async function startServer() {
     await connectDatabase();
     logger.info('Connected to MongoDB');
 
+    // BLOOM-08: start the competency updater poller
+    const { startCompetencyUpdater } = require('./services/competencyUpdater');
+    const stopUpdater = startCompetencyUpdater();
+    logger.info('Competency updater started (BLOOM-08)');
+
     app.listen(PORT, () => {
       logger.info(`Study Management service listening on port ${PORT}`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
+    });
+
+    // Wire graceful shutdown for the updater
+    process.on('SIGTERM', () => {
+      logger.info('SIGTERM received, shutting down gracefully...');
+      stopUpdater();
+      process.exit(0);
     });
   } catch (error) {
     logger.error('Failed to start study management service:', error);
     process.exit(1);
   }
 }
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
 
 startServer();
