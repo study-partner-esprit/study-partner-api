@@ -384,6 +384,62 @@ const learningObjectiveSchema = new mongoose.Schema(
   }
 );
 
+const competencyProfileSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true
+    },
+    topicId: {
+      type: String,
+      required: true
+    },
+    knowledgeType: {
+      type: String,
+      required: true
+    },
+    bloomLevel: {
+      type: String,
+      required: true
+    },
+    score: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      max: 1
+    },
+    confidence: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      max: 1
+    },
+    evidence: {
+      type: [
+        {
+          objectiveId: String,
+          demonstratedBloomLevel: String,
+          masteryScore: Number,
+          evaluatedAt: Date,
+          correlationId: String
+        }
+      ],
+      default: [],
+      validate: {
+        validator: function (v) {
+          return v.length <= 20;
+        },
+        message: 'Evidence array capped at 20 entries'
+      }
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
 const studyPlanSchema = new mongoose.Schema(
   {
     userId: {
@@ -447,6 +503,13 @@ learningObjectiveSchema.index({ topicId: 1, bloomLevel: 1 });
 learningObjectiveSchema.index({ documentId: 1 });
 learningObjectiveSchema.index({ documentId: 1, topicId: 1, textHash: 1 }, { unique: true });
 
+// BLOOM-07: competency profile indexes
+competencyProfileSchema.index({ userId: 1, topicId: 1 });
+competencyProfileSchema.index(
+  { userId: 1, topicId: 1, knowledgeType: 1, bloomLevel: 1 },
+  { unique: true }
+);
+
 const StudySession = mongoose.model('StudySession', studySessionSchema);
 const Task = mongoose.model('Task', taskSchema);
 const Topic = mongoose.model('Topic', topicSchema);
@@ -458,6 +521,11 @@ const LearningObjective = mongoose.model(
   learningObjectiveSchema,
   'learning_objectives'
 );
+const CompetencyProfile = mongoose.model(
+  'CompetencyProfile',
+  competencyProfileSchema,
+  'competency_profiles'
+);
 
 module.exports = {
   StudySession,
@@ -466,5 +534,6 @@ module.exports = {
   Subject,
   Course,
   StudyPlan,
-  LearningObjective
+  LearningObjective,
+  CompetencyProfile
 };
