@@ -63,7 +63,12 @@ jest.mock('../models/index', () => ({
     find: jest.fn()
   },
   Topic: {},
-  Subject: {}
+  Subject: {},
+  LearningObjective: {
+    find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) }),
+    updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+    deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 })
+  }
 }));
 
 // Get the mocked models
