@@ -4,6 +4,10 @@ const { getUserCompetencyMap, getTopicDetail } = require('../services/competency
 
 const router = express.Router();
 
+// Short-TTL private cache (PERF): competency data is user-specific and
+// refreshes as the updater writes new evidence. Bounded per user.
+const CACHE_TTL_SECONDS = 60;
+
 // GET /api/v1/competencies
 // Grouped subject → topic → 6 Bloom levels, optionally filtered by subject
 // and/or with a per-knowledge-type breakdown.
@@ -20,6 +24,7 @@ router.get(
       knowledgeTypeBreakdown
     });
 
+    res.set('Cache-Control', `private, max-age=${CACHE_TTL_SECONDS}`);
     res.json({ competencies });
   })
 );
@@ -38,6 +43,7 @@ router.get(
       return res.status(404).json({ error: 'No competency data for this topic' });
     }
 
+    res.set('Cache-Control', `private, max-age=${CACHE_TTL_SECONDS}`);
     res.json({ topic: detail });
   })
 );

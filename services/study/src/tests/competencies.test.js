@@ -61,6 +61,7 @@ describe('GET /api/v1/competencies', () => {
       subjectId: undefined,
       knowledgeTypeBreakdown: false
     });
+    expect(res.headers['cache-control']).toMatch(/max-age=/);
   });
 
   test('forwards subjectId filter and knowledgeType breakdown', async () => {
@@ -259,16 +260,14 @@ describe('getUserCompetencyMap (real implementation, mocked models)', () => {
   test('drops profiles whose topic is not in any course topic tree', async () => {
     Course.find.mockReturnValue({
       select: jest.fn().mockReturnThis(),
-      lean: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            _id: 'c1',
-            subjectId: 'subj-1',
-            title: 'A',
-            topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'S' }] }]
-          }
-        ])
+      lean: jest.fn().mockResolvedValue([
+        {
+          _id: 'c1',
+          subjectId: 'subj-1',
+          title: 'A',
+          topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'S' }] }]
+        }
+      ])
     });
     CompetencyProfile.find.mockReturnValue({
       lean: jest.fn().mockResolvedValue([
@@ -303,16 +302,14 @@ describe('getUserCompetencyMap (real implementation, mocked models)', () => {
   test('includes knowledgeType breakdown when requested', async () => {
     Course.find.mockReturnValue({
       select: jest.fn().mockReturnThis(),
-      lean: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            _id: 'c1',
-            subjectId: 'subj-1',
-            title: 'A',
-            topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'S' }] }]
-          }
-        ])
+      lean: jest.fn().mockResolvedValue([
+        {
+          _id: 'c1',
+          subjectId: 'subj-1',
+          title: 'A',
+          topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'S' }] }]
+        }
+      ])
     });
     CompetencyProfile.find.mockReturnValue({
       lean: jest.fn().mockResolvedValue([
@@ -352,16 +349,14 @@ describe('getTopicDetail (real implementation, mocked models)', () => {
   test('returns per-level competencies with evidence excerpts and needsReview', async () => {
     Course.find.mockReturnValue({
       select: jest.fn().mockReturnThis(),
-      lean: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            _id: 'c1',
-            subjectId: 'subj-1',
-            title: 'A',
-            topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'Sorting' }] }]
-          }
-        ])
+      lean: jest.fn().mockResolvedValue([
+        {
+          _id: 'c1',
+          subjectId: 'subj-1',
+          title: 'A',
+          topics: [{ title: 'T', subtopics: [{ id: 't1', title: 'Sorting' }] }]
+        }
+      ])
     });
     CompetencyProfile.find.mockReturnValue({
       lean: jest.fn().mockResolvedValue([
