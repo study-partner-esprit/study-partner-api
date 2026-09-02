@@ -156,6 +156,15 @@ const taskSchema = new mongoose.Schema(
     topicId: {
       type: String
     },
+    // BLOOM-10: competency target for weakest-first planning. `objectiveId`
+    // is the learning objective / subtopic id the task strengthens at
+    // `targetBloomLevel`. Optional — absent for fallback/degraded plans.
+    objectiveId: {
+      type: String
+    },
+    targetBloomLevel: {
+      type: String
+    },
     priority: {
       type: String,
       enum: ['low', 'medium', 'high'],
@@ -516,7 +525,10 @@ const studyPlanSchema = new mongoose.Schema(
           estimated_minutes: Number,
           difficulty: Number,
           prerequisites: [String],
-          is_review: Boolean
+          is_review: Boolean,
+          // BLOOM-10: competency target echoed from the AI result (snake_case).
+          objective_id: String,
+          target_bloom_level: String
         }
       ]
     },
