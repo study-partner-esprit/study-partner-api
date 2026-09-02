@@ -63,6 +63,33 @@ describe('validatePlannerPayload (study.plan.generate)', () => {
   });
 });
 
+describe('study.eval.step objectiveId parity (EVAL-08)', () => {
+  test('accepts an optional objectiveId', () => {
+    expect(
+      validateJobPayload('study.eval.step', { sessionId: 's', objectiveId: 'obj-1' }).valid
+    ).toBe(true);
+  });
+
+  test('rejects a blank objectiveId when provided', () => {
+    expect(
+      validateJobPayload('study.eval.step', { sessionId: 's', objectiveId: '   ' }).valid
+    ).toBe(false);
+  });
+
+  test('rejects an over-long objectiveId at the Python limit', () => {
+    expect(
+      validateJobPayload('study.eval.step', {
+        sessionId: 's',
+        objectiveId: 'x'.repeat(LIMITS.COURSE_ID_MAX_CHARS + 1)
+      }).valid
+    ).toBe(false);
+  });
+
+  test('eval still requires sessionId', () => {
+    expect(validateJobPayload('study.eval.step', { objectiveId: 'obj-1' }).valid).toBe(false);
+  });
+});
+
 describe('validateJobPayload routing', () => {
   test('knowledge.extract requires documentId, courseId and contentRef (BLOOM-03)', () => {
     expect(
