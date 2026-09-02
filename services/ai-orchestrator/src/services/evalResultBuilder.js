@@ -19,7 +19,7 @@ const SCORE_FIELDS = [
 ];
 
 /**
- * @param {object} result ai.results envelope {correlationId, messageId, type, status, payload}
+ * @param {object} result ai.results envelope {userId, correlationId, messageId, type, status, payload}
  * @returns {object|null} EvalResult doc fields, or null when not an eval step
  */
 function buildEvalResultRecord(result) {
@@ -41,6 +41,9 @@ function buildEvalResultRecord(result) {
   return {
     correlationId: result.correlationId,
     messageId: result.messageId,
+    // userId comes from the authenticated result envelope — the only trusted
+    // source of identity (the payload deliberately never carries a userId).
+    userId: result.userId,
     sessionId: payload.sessionId,
     step: payload.step,
     status: payload.state || evaluationOutput.session_status || 'CONTINUE',

@@ -440,6 +440,53 @@ const competencyProfileSchema = new mongoose.Schema(
   }
 );
 
+// ── BLOOM-08: EvalResultRecord (read-only view of eval_results collection) ───
+// The orchestrator writes eval_results; the study service reads them to
+// feed the competency updater. Shared DB, separate process.
+const evalResultRecordSchema = new mongoose.Schema(
+  {
+    correlationId: { type: String, required: true },
+    messageId: { type: String },
+    userId: { type: String, required: true, index: true },
+    sessionId: { type: String, required: true },
+    step: { type: Number, required: true },
+    status: { type: String },
+    masteryScore: { type: Number, default: null },
+    scores: { type: mongoose.Schema.Types.Mixed, default: {} },
+    nextQuestion: { type: String, default: null },
+    demonstratedBloomLevel: { type: String, default: null },
+    objectiveId: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now }
+  },
+  {
+    collection: 'eval_results',
+    timestamps: false
+  }
+);
+
+evalResultRecordSchema.index({ demonstratedBloomLevel: 1 });
+evalResultRecordSchema.index({ objectiveId: 1 });
+
+// ── BLOOM-08: CompetencyProcessing (idempotency claim store) ─────────────────
+// Each eval result is claimed exactly once via unique correlationId.
+// Replays/retries find the existing claim and skip (ACK-skip semantics).
+const competencyProcessingSchema = new mongoose.Schema(
+  {
+    correlationId: {
+      type: String,
+      required: true,
+      unique: true
+    },
+    processedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
 const studyPlanSchema = new mongoose.Schema(
   {
     userId: {
@@ -527,6 +574,16 @@ const CompetencyProfile = mongoose.model(
   'competency_profiles'
 );
 
+// BLOOM-08: read-only view of eval_results (written by orchestrator)
+const EvalResultRecord = mongoose.model('EvalResultRecord', evalResultRecordSchema, 'eval_results');
+
+// BLOOM-08: idempotency claim store for competency updates
+const CompetencyProcessing = mongoose.model(
+  'CompetencyProcessing',
+  competencyProcessingSchema,
+  'competency_processing'
+);
+
 module.exports = {
   StudySession,
   Task,
@@ -535,5 +592,7 @@ module.exports = {
   Course,
   StudyPlan,
   LearningObjective,
-  CompetencyProfile
+  CompetencyProfile,
+  EvalResultRecord,
+  CompetencyProcessing
 };

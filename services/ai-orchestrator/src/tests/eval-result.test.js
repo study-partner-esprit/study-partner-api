@@ -38,6 +38,7 @@ const EVAL_JOB_TYPE = 'study.eval.step';
 const completedEvalResult = () => ({
   correlationId: 'corr-1',
   messageId: 'msg-1',
+  userId: 'user-123',
   type: EVAL_JOB_TYPE,
   status: 'completed',
   requestId: 'req-1',
@@ -71,6 +72,7 @@ describe('buildEvalResultRecord (real implementation)', () => {
     expect(rec).toMatchObject({
       correlationId: 'corr-1',
       messageId: 'msg-1',
+      userId: 'user-123',
       sessionId: 'sess-1',
       step: 2,
       status: 'CONTINUE',
@@ -141,6 +143,7 @@ describe('evalResultStore (mocked model)', () => {
     await storeUpsert({
       correlationId: 'corr-1',
       messageId: 'msg-1',
+      userId: 'user-123',
       sessionId: 'sess-1',
       step: 2,
       status: 'CONTINUE',
