@@ -13,6 +13,7 @@
  */
 
 const { Subject, Course, CompetencyProfile } = require('../models/index');
+const { BLOOM_LEVELS, UNLOCK_THRESHOLD } = require('@study-partner/shared/bloom/taxonomy');
 
 const BLOOM_ORDER = ['REMEMBER', 'UNDERSTAND', 'APPLY', 'ANALYSE', 'EVALUATE', 'CREATE'];
 
@@ -20,6 +21,18 @@ const BLOOM_ORDER = ['REMEMBER', 'UNDERSTAND', 'APPLY', 'ANALYSE', 'EVALUATE', '
 // to trust (e.g. a single weak observation). Internal signal; instructor-only
 // by convention — not shown to students.
 const NEEDS_REVIEW_MIN_CONFIDENCE = 0.4;
+
+// Map stored upper-case bloom levels (incl. British 'ANALYSE') onto the
+// lowercase taxonomy keys the Python planner expects (BLOOM-10).
+const BLOOM_LEVEL_TO_KEY = {
+  REMEMBER: 'remember',
+  UNDERSTAND: 'understand',
+  APPLY: 'apply',
+  ANALYZE: 'analyze',
+  ANALYSE: 'analyze',
+  EVALUATE: 'evaluate',
+  CREATE: 'create'
+};
 
 /**
  * Build a topicId → { title, parentTopic, subjectId } index by flattening the
@@ -220,11 +233,115 @@ async function getTopicDetail(userId, topicId) {
   };
 }
 
+/**
+ * Weakest-first competency input for the planner (BLOOM-10).
+ *
+ * For a given course, collect the user's competency rows scoped to that
+ * course's subtopics (topicId = subtopic id), aggregate scores per Bloom
+ * level (averaging across knowledge types), compute the progression-gated
+ * `unlocked_levels` and the learner's `current_level`, and rank topics by
+ * weakness (lowest current-level score first). Returns the top-K in the
+ * snake_case shape the Python `study.plan.generate` payload expects.
+ *
+ * A topic with no competency rows is "not started": current_level = null and
+ * scores empty, which the planner treats as weakest. When the user has no
+ * rows at all the result is [] (planner degrades gracefully).
+ *
+ * @param {string} userId
+ * @param {string} courseId
+ * @param {number} [limit=10] – cap on returned topics (weakest first)
+ * @returns {Promise<Array>} [{ topic_id, topic_title, scores, current_level, unlocked_levels }]
+ */
+async function getWeakCompetenciesForCourse(userId, courseId, limit = 10) {
+  const course = await Course.findOne({ _id: courseId, userId }).lean();
+  if (!course) return [];
+
+  const titleById = new Map();
+  for (const topic of course.topics || []) {
+    for (const sub of topic.subtopics || []) {
+      if (sub && sub.id) titleById.set(sub.id, sub.title || sub.id);
+    }
+  }
+  const validTopicIds = [...titleById.keys()];
+  if (validTopicIds.length === 0) return [];
+
+  const rows = await CompetencyProfile.find({
+    userId,
+    topicId: { $in: validTopicIds }
+  }).lean();
+
+  // Aggregate per topicId: level -> average score across knowledge types
+  const buckets = new Map(); // topicId -> { scores: Map(level -> {total,count}) }
+  for (const row of rows) {
+    const key = BLOOM_LEVEL_TO_KEY[row.bloomLevel];
+    if (!key) continue;
+    if (!buckets.has(row.topicId)) buckets.set(row.topicId, new Map());
+    const scores = buckets.get(row.topicId);
+    if (!scores.has(key)) scores.set(key, { total: 0, count: 0 });
+    scores.get(key).total += row.score;
+    scores.get(key).count += 1;
+  }
+
+  const scored = [];
+  for (const topicId of validTopicIds) {
+    const scoresMap = buckets.get(topicId);
+    const scores = {};
+    if (scoresMap) {
+      for (const [level, { total, count }] of scoresMap) {
+        scores[level] = Math.round((total / count) * 1000) / 1000;
+      }
+    }
+
+    // Progression gate: level N unlocked only when N-1 >= threshold.
+    const unlocked = [];
+    for (const level of BLOOM_LEVELS) {
+      const idx = BLOOM_LEVELS.indexOf(level);
+      if (idx === 0) {
+        unlocked.push(level);
+        continue;
+      }
+      const prevScore = scores[BLOOM_LEVELS[idx - 1]];
+      if (prevScore != null && prevScore >= UNLOCK_THRESHOLD) unlocked.push(level);
+    }
+
+    // current_level = highest unlocked level with a score (the level the
+    // learner is currently working on), else null (not started).
+    let currentLevel = null;
+    for (let i = BLOOM_LEVELS.length - 1; i >= 0; i -= 1) {
+      const level = BLOOM_LEVELS[i];
+      if (unlocked.includes(level) && scores[level] != null) {
+        currentLevel = level;
+        break;
+      }
+    }
+    if (currentLevel === null && unlocked.length > 0 && scores[BLOOM_LEVELS[0]] != null) {
+      currentLevel = BLOOM_LEVELS[0];
+    }
+
+    scored.push({
+      topic_id: topicId,
+      topic_title: titleById.get(topicId),
+      scores,
+      current_level: currentLevel,
+      unlocked_levels: unlocked
+    });
+  }
+
+  // Weakest-first: sort by the score at the current level ascending; topics
+  // without any data (not started) rank weakest of all.
+  const sortScore = (wc) => {
+    if (wc.current_level == null) return -1;
+    return wc.scores[wc.current_level] != null ? wc.scores[wc.current_level] : 1;
+  };
+  return scored.sort((a, b) => sortScore(a) - sortScore(b)).slice(0, limit);
+}
+
 module.exports = {
   BLOOM_ORDER,
   NEEDS_REVIEW_MIN_CONFIDENCE,
   buildTopicIndex,
   groupKnowledgeTypes,
   getUserCompetencyMap,
-  getTopicDetail
+  getTopicDetail,
+  getWeakCompetenciesForCourse
 };
