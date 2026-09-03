@@ -12,6 +12,7 @@ const {
 const aiRoutes = require('./routes/ai');
 const jobsRoutes = require('./routes/jobs');
 const evalRoutes = require('./routes/eval');
+const searchRoutes = require('./routes/search');
 
 // --- Environment validation (fail-fast on missing secrets) ---
 const REQUIRED_ENV = ['JWT_SECRET'];
@@ -81,6 +82,11 @@ app.use('/api/v1/ai', authenticate, jobsRoutes);
 // LLM-heavy call so it gets the strict AI rate limit; polling reads stay open.
 app.use('/api/v1/eval/step', aiRateLimiter);
 app.use('/api/v1/eval', authenticate, evalRoutes);
+
+// Search API (F05 / SEARCH-07): async search jobs — submit is the crawler+LLM
+// heavy call so it gets the strict AI rate limit (10 req/min per user, SEARCH-02).
+app.use('/api/v1/search/query', aiRateLimiter);
+app.use('/api/v1/search', authenticate, searchRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
