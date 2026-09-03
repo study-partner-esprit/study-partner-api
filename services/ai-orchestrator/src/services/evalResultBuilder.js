@@ -57,7 +57,8 @@ function buildEvalResultRecord(result) {
       payload.demonstratedBloomLevel !== undefined && payload.demonstratedBloomLevel !== null
         ? payload.demonstratedBloomLevel
         : evaluationOutput.demonstrated_bloom_level || null,
-    objectiveId: payload.objectiveId !== undefined ? payload.objectiveId : null
+    objectiveId: payload.objectiveId !== undefined ? payload.objectiveId : null,
+    targetBloomLevel: payload.targetBloomLevel !== undefined ? payload.targetBloomLevel : null
   };
 }
 

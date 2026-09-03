@@ -28,7 +28,8 @@ async function upsertByCorrelation(record) {
     scores: record.scores,
     nextQuestion: record.nextQuestion,
     demonstratedBloomLevel: record.demonstratedBloomLevel,
-    objectiveId: record.objectiveId
+    objectiveId: record.objectiveId,
+    targetBloomLevel: record.targetBloomLevel || null
   };
   await EvalResult.updateOne(
     { correlationId: record.correlationId },
