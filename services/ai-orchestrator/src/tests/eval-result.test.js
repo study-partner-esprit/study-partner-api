@@ -49,6 +49,7 @@ const completedEvalResult = () => ({
     mastery_score: 0.7,
     demonstratedBloomLevel: 'UNDERSTAND',
     objectiveId: 'obj-9',
+    targetBloomLevel: 'APPLY',
     next_question: 'Why does the base case stop recursion?',
     evaluation_output: {
       session_status: 'CONTINUE',
@@ -59,6 +60,7 @@ const completedEvalResult = () => ({
       specificity: 0.7,
       mastery_score: 0.7,
       demonstrated_bloom_level: 'UNDERSTAND',
+      target_bloom_level: 'APPLY',
       next_question: 'Why does the base case stop recursion?'
     }
   }
@@ -79,7 +81,8 @@ describe('buildEvalResultRecord (real implementation)', () => {
       masteryScore: 0.7,
       nextQuestion: 'Why does the base case stop recursion?',
       demonstratedBloomLevel: 'UNDERSTAND',
-      objectiveId: 'obj-9'
+      objectiveId: 'obj-9',
+      targetBloomLevel: 'APPLY'
     });
     expect(rec.scores).toEqual({
       concept_coverage: 0.8,
@@ -111,6 +114,7 @@ describe('buildEvalResultRecord (real implementation)', () => {
     expect(rec.demonstratedBloomLevel).toBe('CREATE');
     expect(rec.nextQuestion).toBe('q');
     expect(rec.objectiveId).toBeNull();
+    expect(rec.targetBloomLevel).toBeNull();
     expect(rec.masteryScore).toBeNull();
     expect(rec.scores).toEqual({});
   });
@@ -151,7 +155,8 @@ describe('evalResultStore (mocked model)', () => {
       scores: { concept_coverage: 0.8 },
       nextQuestion: 'q',
       demonstratedBloomLevel: 'UNDERSTAND',
-      objectiveId: 'obj-9'
+      objectiveId: 'obj-9',
+      targetBloomLevel: 'APPLY'
     });
     expect(EvalResult.updateOne).toHaveBeenCalledTimes(1);
     expect(EvalResult.updateOne).toHaveBeenCalledWith(

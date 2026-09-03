@@ -22,9 +22,13 @@ jest.mock('@study-partner/shared/ai-messaging', () => ({
     'study.ingest.course'
   ]
 }));
+jest.mock('../services/objectiveContext', () => ({
+  resolveObjectiveContext: jest.fn()
+}));
 
 const AiJob = require('../models/AiJob');
 const { publishAiJob } = require('@study-partner/shared/ai-messaging');
+const { resolveObjectiveContext } = require('../services/objectiveContext');
 
 const app = require('../app');
 
@@ -104,6 +108,60 @@ describe('POST /api/v1/eval/step', () => {
       .send({ ...VALID_STEP, objectiveId: '   ' });
 
     expect(res.status).toBe(422);
+    expect(publishAiJob).not.toHaveBeenCalled();
+  });
+
+  test('EVAL-02b: resolves objective context and injects targetBloomLevel + knowledgeType', async () => {
+    publishAiJob.mockResolvedValue({ messageId: 'm1', correlationId: 'corr-1' });
+    resolveObjectiveContext.mockResolvedValue({
+      targetBloomLevel: 'APPLY',
+      knowledgeType: 'procedural'
+    });
+
+    const res = await request(app)
+      .post('/api/v1/eval/step')
+      .set(authHeader())
+      .send({ ...VALID_STEP, objectiveId: 'obj-apply' });
+
+    expect(res.status).toBe(202);
+    expect(resolveObjectiveContext).toHaveBeenCalledWith('obj-apply');
+    expect(publishAiJob).toHaveBeenCalledWith(
+      'study.eval.step',
+      'user-1',
+      expect.objectContaining({
+        objectiveId: 'obj-apply',
+        targetBloomLevel: 'APPLY',
+        knowledgeType: 'procedural'
+      }),
+      expect.anything()
+    );
+  });
+
+  test('EVAL-02b: skips objective resolution when objectiveId is absent', async () => {
+    publishAiJob.mockResolvedValue({ messageId: 'm1', correlationId: 'corr-1' });
+
+    await request(app).post('/api/v1/eval/step').set(authHeader()).send(VALID_STEP);
+
+    expect(resolveObjectiveContext).not.toHaveBeenCalled();
+    expect(publishAiJob).toHaveBeenCalledWith(
+      'study.eval.step',
+      'user-1',
+      expect.not.objectContaining({ targetBloomLevel: expect.anything() }),
+      expect.anything()
+    );
+  });
+
+  test('EVAL-02b: 422 when the objective is not found or inactive (no publish)', async () => {
+    resolveObjectiveContext.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/v1/eval/step')
+      .set(authHeader())
+      .send({ ...VALID_STEP, objectiveId: 'obj-missing' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('objective not found or inactive');
+    expect(AiJob.createPending).not.toHaveBeenCalled();
     expect(publishAiJob).not.toHaveBeenCalled();
   });
 

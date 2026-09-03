@@ -34,6 +34,9 @@ const evalResultSchema = new mongoose.Schema(
     nextQuestion: { type: String, default: null },
     demonstratedBloomLevel: { type: String, default: null },
     objectiveId: { type: String, default: null },
+    // EVAL-02b: target Bloom level resolved server-side from the objective,
+    // carried through the worker result feed for BLOOM-08 competency updates.
+    targetBloomLevel: { type: String, default: null },
     createdAt: { type: Date, default: Date.now }
   },
   {

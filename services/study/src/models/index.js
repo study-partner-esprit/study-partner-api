@@ -465,6 +465,7 @@ const evalResultRecordSchema = new mongoose.Schema(
     nextQuestion: { type: String, default: null },
     demonstratedBloomLevel: { type: String, default: null },
     objectiveId: { type: String, default: null },
+    targetBloomLevel: { type: String, default: null },
     createdAt: { type: Date, default: Date.now }
   },
   {

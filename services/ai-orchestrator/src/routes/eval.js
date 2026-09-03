@@ -19,6 +19,7 @@ const { logger } = require('@study-partner/shared');
 const { publishAiJob } = require('@study-partner/shared/ai-messaging');
 const { validateJobPayload } = require('@study-partner/shared/ai-messaging/payloadSchemas');
 const AiJob = require('../models/AiJob');
+const { resolveObjectiveContext } = require('../services/objectiveContext');
 
 const EVAL_JOB_TYPE = 'study.eval.step';
 const router = express.Router();
@@ -35,6 +36,22 @@ router.post('/step', async (req, res, next) => {
       return res
         .status(422)
         .json({ error: 'eval payload failed validation', details: check.errors });
+    }
+
+    // EVAL-02b: when an objectiveId is provided, resolve the learning
+    // objective's bloomLevel + knowledgeType server-side (Python never
+    // touches Mongo) and carry them as evaluation context in the job
+    // payload.  A present-but-unresolvable objectiveId is a client error.
+    if (payload.objectiveId) {
+      const ctx = await resolveObjectiveContext(payload.objectiveId);
+      if (!ctx) {
+        return res.status(422).json({
+          error: 'objective not found or inactive',
+          details: `objectiveId "${payload.objectiveId}" did not match an active learning objective`
+        });
+      }
+      payload.targetBloomLevel = ctx.targetBloomLevel;
+      payload.knowledgeType = ctx.knowledgeType;
     }
 
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
@@ -72,6 +89,8 @@ router.post('/step', async (req, res, next) => {
       jobId: job.jobId,
       sessionId: payload.sessionId,
       step: payload.step,
+      objectiveId: payload.objectiveId || null,
+      targetBloomLevel: payload.targetBloomLevel || null,
       correlationId,
       requestId,
       userId
