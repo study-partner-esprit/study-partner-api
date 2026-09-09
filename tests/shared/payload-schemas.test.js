@@ -6,6 +6,7 @@
 const {
   validateJobPayload,
   validatePlannerPayload,
+  validateCoachPayload,
   validateKnowledgeExtractPayload,
   LIMITS
 } = require('../../shared/ai-messaging/payloadSchemas');
@@ -109,7 +110,7 @@ describe('validateJobPayload routing', () => {
     ).toBe(false);
   });
 
-  test('plan type uses strict validator; other types keep basic rules', () => {
+  test('plan and coach use strict validators; eval/search/ingest keep basic rules', () => {
     // eval still requires sessionId (EVAL-02 basic rule preserved)
     expect(validateJobPayload('study.eval.step', {}).valid).toBe(false);
     expect(validateJobPayload('study.eval.step', { sessionId: 's' }).valid).toBe(true);
@@ -166,5 +167,83 @@ describe('validateKnowledgeExtractPayload (BLOOM-03)', () => {
     expect(validateKnowledgeExtractPayload(null).valid).toBe(false);
     expect(validateKnowledgeExtractPayload('str').valid).toBe(false);
     expect(validateKnowledgeExtractPayload([1]).valid).toBe(false);
+  });
+});
+
+describe('validateCoachPayload (study.coach.nudge)', () => {
+  test('accepts an empty payload (all fields optional)', () => {
+    expect(validateJobPayload('study.coach.nudge', {})).toEqual({ valid: true, errors: [] });
+  });
+
+  test('accepts a full session context payload', () => {
+    const res = validateCoachPayload({
+      session_id: 'sess-123',
+      signals: [
+        {
+          timestamp: '2026-08-26T08:00:00Z',
+          focus_state: 'Focused',
+          focus_score: 0.8,
+          fatigue_state: 'Alert',
+          fatigue_score: 0.1,
+          focus_confidence: 0.9,
+          focus_trend: -0.05
+        }
+      ],
+      messages: [
+        { role: 'user', content: 'I feel drained.' },
+        { role: 'assistant', content: 'Take a rest.' }
+      ],
+      focus_state: 'Drifting',
+      focus_score: 0.4,
+      fatigue_score: 0.7,
+      ignored_count: 2,
+      do_not_disturb: false,
+      current_time: '2026-08-26T08:05:00Z'
+    });
+    expect(res.valid).toBe(true);
+  });
+
+  test('rejects userId and any unknown fields in the body', () => {
+    expect(validateCoachPayload({ userId: 'u' }).valid).toBe(false);
+    expect(validateCoachPayload({ mystery_field: 1 }).valid).toBe(false);
+  });
+
+  test('enforces the signal window cap (20)', () => {
+    const signal = {
+      timestamp: '2026-08-26T08:00:00Z',
+      focus_state: 'Focused',
+      focus_score: 0.8,
+      fatigue_state: 'Alert',
+      fatigue_score: 0.1
+    };
+    const ok = Array.from({ length: LIMITS.COACH_MAX_SIGNALS }, () => signal);
+    expect(validateCoachPayload({ signals: ok }).valid).toBe(true);
+    expect(validateCoachPayload({ signals: [...ok, signal] }).valid).toBe(false);
+  });
+
+  test('rejects over-length message content at the exact Python limit', () => {
+    expect(
+      validateCoachPayload({ messages: [{ role: 'user', content: 'x'.repeat(LIMITS.COACH_MESSAGE_MAX_CHARS) }] }).valid
+    ).toBe(true);
+    expect(
+      validateCoachPayload({ messages: [{ role: 'user', content: 'x'.repeat(LIMITS.COACH_MESSAGE_MAX_CHARS + 1) }] }).valid
+    ).toBe(false);
+  });
+
+  test('caps total payload size at 16 KB', () => {
+    const big = {
+      messages: Array.from({ length: 10 }, () => ({ role: 'user', content: 'y'.repeat(2000) }))
+    };
+    expect(validateCoachPayload(big).valid).toBe(false);
+  });
+
+  test('rejects bad states, scores, counts and types', () => {
+    expect(validateCoachPayload({ focus_state: 'zombie' }).valid).toBe(false);
+    expect(validateCoachPayload({ focus_score: 1.5 }).valid).toBe(false);
+    expect(validateCoachPayload({ focus_score: true }).valid).toBe(false);
+    expect(validateCoachPayload({ ignored_count: -1 }).valid).toBe(false);
+    expect(validateCoachPayload({ do_not_disturb: 'yes' }).valid).toBe(false);
+    expect(validateCoachPayload({ current_time: 'not-a-date' }).valid).toBe(false);
+    expect(validateCoachPayload('just a string').valid).toBe(false);
   });
 });
