@@ -30,22 +30,63 @@ const storage = multer.diskStorage({
   }
 });
 
+// INGEST-01: metadata (MIME + extension) allowlist, plus magic-byte sniffing.
+const { validateUploadMetadata, validateUploadFile } = require('@study-partner/shared/uploadValidation');
+
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file (INGEST-02 raises to 25MB)
   fileFilter: (req, file, cb) => {
-    // Allow PDF and text files
-    if (
-      file.mimetype === 'application/pdf' ||
-      file.mimetype === 'text/plain' ||
-      file.originalname.toLowerCase().endsWith('.txt')
-    ) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF and text files are allowed'));
-    }
+    // Cheap first pass: declared MIME + extension must be allowed.
+    const check = validateUploadMetadata(file);
+    if (check.valid) return cb(null, true);
+    const err = new Error(check.errors.join('; '));
+    err.statusCode = 422; // sanitized message, no client-controlled content reflected
+    return cb(err);
   }
 });
+
+// INGEST-01: content is only trusted after magic-byte sniffing (never client MIME).
+// Multer diskStorage writes the file first, so we read the header back off disk.
+// Rejects scripts/executables disguised as PDF/text and MIME/content mismatches.
+function sniffUploadedFiles(req, res, next) {
+  if (!req.files || req.files.length === 0) return next();
+
+  const fs = require('fs');
+  for (const file of req.files) {
+    let buffer;
+    try {
+      buffer = fs.readFileSync(file.path);
+    } catch (readErr) {
+      const err = new Error('Failed to read uploaded file');
+      err.statusCode = 422;
+      return next(err);
+    }
+
+    const check = validateUploadFile({
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      buffer
+    });
+
+    if (!check.valid) {
+      // Clean up all files of this request before responding.
+      const unlink = require('fs').unlinkSync;
+      req.files.concat(file).forEach((f) => {
+        try {
+          unlink(f.path);
+        } catch (_) {
+          /* best-effort cleanup */
+        }
+      });
+      const err = new Error('Upload rejected: ' + check.errors.join('; '));
+      err.statusCode = 422;
+      return next(err);
+    }
+  }
+
+  return next();
+}
 
 // Get all courses for a user, optionally filtered by subject
 router.get('/', async (req, res) => {
@@ -90,6 +131,7 @@ router.post(
   '/',
   tierGate('vip', 'vip_plus', 'trial'),
   upload.array('files', 10),
+  sniffUploadedFiles,
   async (req, res) => {
     try {
       const userId = req.user.userId;
@@ -350,6 +392,7 @@ router.post(
   '/:courseId/files',
   tierGate('vip', 'vip_plus', 'trial'),
   upload.array('files', 10),
+  sniffUploadedFiles,
   async (req, res) => {
     try {
       const { courseId } = req.params;
