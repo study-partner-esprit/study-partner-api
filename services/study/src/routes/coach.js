@@ -9,6 +9,11 @@
  * nudges are rejected before any job is created. The nudge is tied to the
  * authenticated user's active session (AC#3) — `session_id` is always resolved
  * here, never trusted from the client unless it belongs to the user.
+ *
+ * COACH-13: the bounded `session_stats` block (progress, minutes on task, task
+ * switches, breaks, streak) is derived SERVER-SIDE from the active session and
+ * the user's gamification streak — never accepted from the client — so nudges
+ * are grounded in real in-session behaviour.
  */
 
 const express = require('express');
@@ -19,6 +24,8 @@ const axios = require('axios');
 const { logger } = require('@study-partner/shared');
 const { tierGate } = require('@study-partner/shared/tierGate');
 const { StudySession } = require('../models');
+const { resolveSessionStats } = require('../utils/sessionStats');
+const { fetchGamificationProfile } = require('../utils/gamificationService');
 const { validateCoachPayload } = require('@study-partner/shared/ai-messaging/payloadSchemas');
 const router = express.Router();
 
@@ -45,8 +52,10 @@ router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => 
     const userId = req.user.userId;
 
     // Resolve the active session: explicit session_id (must belong to the
-    // user) or the user's current active session.
+    // user) or the user's current active session. The resolved document is
+    // also the source of the COACH-13 session_stats.
     let sessionId = value.session_id;
+    let session = null;
     if (sessionId) {
       const owned = await StudySession.findOne({ _id: sessionId, userId });
       if (!owned) {
@@ -56,6 +65,7 @@ router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => 
       if (owned.status !== 'active') {
         return res.status(400).json({ error: 'Session is not active' });
       }
+      session = owned;
     } else {
       const active = await StudySession.findOne({ userId, status: 'active' }).sort({
         createdAt: -1
@@ -63,6 +73,7 @@ router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => 
       if (!active) {
         return res.status(400).json({ error: 'No active study session for this user' });
       }
+      session = active;
       sessionId = active._id.toString();
     }
 
@@ -79,6 +90,19 @@ router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => 
       if (value[field] !== undefined) payload[field] = value[field];
     }
     payload.current_time = payload.current_time || new Date().toISOString();
+
+    // COACH-13: supply bounded session stats from the active session + the
+    // user's gamification streak. Missing/stale data defaults to 0 — the
+    // coach job must never fail because stats are unavailable.
+    const profile = await fetchGamificationProfile({
+      authorization: req.headers.authorization
+    });
+    const streakDays = profile?.stats?.currentStreak ?? 0;
+    payload.session_stats = resolveSessionStats({
+      session,
+      now: new Date(payload.current_time),
+      currentStreakDays: streakDays
+    });
 
     // Defense-in-depth: reject pre-publish the same way the orchestrator would.
     const check = validateCoachPayload(payload);
