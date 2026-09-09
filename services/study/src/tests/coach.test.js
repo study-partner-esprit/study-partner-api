@@ -38,9 +38,15 @@ jest.mock('axios', () => ({
   get: jest.fn()
 }));
 
+jest.mock('../utils/gamificationService', () => ({
+  ...jest.requireActual('../utils/gamificationService'),
+  fetchGamificationProfile: jest.fn()
+}));
+
 const request = require('supertest');
 const axios = require('axios');
 const { StudySession } = require('../models/index');
+const { fetchGamificationProfile } = require('../utils/gamificationService');
 const { generateToken } = require('@study-partner/shared/auth');
 const app = require('../app');
 
@@ -48,6 +54,7 @@ const token = `Bearer ${generateToken({ userId: 'user-123', role: 'student', tie
 
 beforeEach(() => {
   jest.clearAllMocks();
+  fetchGamificationProfile.mockResolvedValue({ stats: { currentStreak: 7 } });
 });
 
 describe('POST /api/v1/coach/nudge', () => {
@@ -139,6 +146,118 @@ describe('POST /api/v1/coach/nudge', () => {
     expect(res.status).toBe(202);
     expect(posted.payload.current_time).toBeTruthy();
     expect(new Date(posted.payload.current_time).toString()).not.toBe('Invalid Date');
+  });
+
+  it('derives bounded session_stats from the active session (COACH-13)', async () => {
+    const now = new Date();
+    const started = new Date(now.getTime() - 25 * 60 * 1000); // 25 minutes ago
+    StudySession.findOne.mockReturnValue(
+      mockSessionQuery({
+        ...mockStudySession,
+        startTime: started,
+        taskProgress: {
+          currentTaskIndex: 2,
+          totalTasks: 4,
+          completedTasks: 2
+        },
+        breakStats: { totalBreaks: 3 }
+      })
+    );
+    const posted = {};
+    axios.post.mockImplementation(async (url, body, opts) => {
+      Object.assign(posted, body);
+      return { data: { jobId: 'job-1', correlationId: 'corr-1' } };
+    });
+
+    const res = await request(app).post('/api/v1/coach/nudge').set('Authorization', token);
+
+    expect(res.status).toBe(202);
+    expect(posted.payload.session_stats).toEqual({
+      progress_pct: 50,
+      minutes_elapsed: 25,
+      task_switches: 2,
+      break_count: 3,
+      current_streak_days: 7
+    });
+  });
+
+  it('defaults session stats to zeros when the session lacks progress data', async () => {
+    // Re-establish the base mock: a previous test overrode findOne's return.
+    StudySession.findOne.mockReturnValue(mockSessionQuery(mockStudySession));
+    const posted = {};
+    axios.post.mockImplementation(async (url, body, opts) => {
+      Object.assign(posted, body);
+      return { data: { jobId: 'job-1', correlationId: 'corr-1' } };
+    });
+
+    const res = await request(app).post('/api/v1/coach/nudge').set('Authorization', token);
+
+    expect(res.status).toBe(202);
+    expect(posted.payload.session_stats).toEqual({
+      progress_pct: 0,
+      minutes_elapsed: 0,
+      task_switches: 0,
+      break_count: 0,
+      current_streak_days: 7
+    });
+  });
+
+  it('uses a zero streak when the gamification lookup fails', async () => {
+    fetchGamificationProfile.mockResolvedValue(null);
+    axios.post.mockResolvedValue({ data: { jobId: 'job-1', correlationId: 'corr-1' } });
+
+    const res = await request(app).post('/api/v1/coach/nudge').set('Authorization', token);
+
+    expect(res.status).toBe(202);
+    const { payload } = axios.post.mock.calls[0][1];
+    expect(payload.session_stats.current_streak_days).toBe(0);
+  });
+
+  it('clamps minutes_elapsed at the 600 bound for long-running sessions', async () => {
+    const longAgo = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48 hours
+    StudySession.findOne.mockReturnValue(
+      mockSessionQuery({ ...mockStudySession, startTime: longAgo })
+    );
+    axios.post.mockResolvedValue({ data: { jobId: 'job-1', correlationId: 'corr-1' } });
+
+    const res = await request(app).post('/api/v1/coach/nudge').set('Authorization', token);
+
+    expect(res.status).toBe(202);
+    const { payload } = axios.post.mock.calls[0][1];
+    expect(payload.session_stats.minutes_elapsed).toBe(600);
+  });
+
+  it('derives stats from the explicit session document (COACH-13)', async () => {
+    StudySession.findOne.mockReturnValue(
+      Promise.resolve({
+        ...mockStudySession,
+        startTime: new Date(Date.now() - 10 * 60 * 1000),
+        taskProgress: {
+          currentTaskIndex: 1,
+          totalTasks: 2,
+          completedTasks: 1
+        }
+      })
+    );
+    const posted = {};
+    axios.post.mockImplementation(async (url, body, opts) => {
+      Object.assign(posted, body);
+      return { data: { jobId: 'job-1', correlationId: 'corr-1' } };
+    });
+
+    const res = await request(app)
+      .post('/api/v1/coach/nudge')
+      .set('Authorization', token)
+      .send({ session_id: 'session-1' });
+
+    expect(res.status).toBe(202);
+    expect(posted.payload.session_stats).toEqual({
+      progress_pct: 50,
+      minutes_elapsed: 10,
+      task_switches: 1,
+      break_count: 0,
+      current_streak_days: 7
+    });
   });
 });
 
