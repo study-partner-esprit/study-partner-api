@@ -51,6 +51,14 @@ beforeEach(() => {
 });
 
 describe('POST /api/v1/coach/nudge', () => {
+  it('returns 401 for an unauthenticated request (COACH-11 negative)', async () => {
+    const res = await request(app).post('/api/v1/coach/nudge').send({ focus_score: 0.5 });
+
+    expect(res.status).toBe(401);
+    expect(StudySession.findOne).not.toHaveBeenCalled();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
   it('returns 202 with jobId when a nudge is scheduled against the active session', async () => {
     StudySession.findOne.mockReturnValue(mockSessionQuery(mockStudySession));
     axios.post.mockResolvedValue({
