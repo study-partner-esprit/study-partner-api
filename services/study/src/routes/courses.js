@@ -242,13 +242,19 @@ router.post(
       const staged = stageCourseFiles(req.files, course._id.toString());
 
       try {
-        const { jobId } = await publishCourseIngestionJob({
+        const { jobId, correlationId } = await publishCourseIngestionJob({
           userId,
           courseId: course._id.toString(),
           fileRef: courseFileRef(course._id.toString()),
           files: staged,
           requestId: req.get('X-Request-ID')
         });
+
+        // INGEST-07: persist the job linkage so progress/result events can be
+        // correlated back to this course document.
+        course.jobId = jobId;
+        course.correlationId = correlationId;
+        await course.save();
 
         console.log('Ingestion job triggered:', jobId);
         return res.status(202).json({
@@ -305,6 +311,25 @@ router.get('/:courseId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching course:', error);
     res.status(500).json({ error: 'Failed to fetch course' });
+  }
+});
+
+// INGEST-07: current ingestion progress + status for a course
+router.get('/:courseId/ingest-status', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.userId;
+
+    const course = await Course.findOne({ _id: courseId, userId });
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const { buildIngestStatus } = require('../services/ingestStatus');
+    res.json(buildIngestStatus(course));
+  } catch (error) {
+    console.error('Error fetching ingest status:', error);
+    res.status(500).json({ error: 'Failed to fetch ingest status' });
   }
 });
 
@@ -372,13 +397,23 @@ router.post(
       const staged = stageCourseFiles(req.files, course._id.toString());
 
       try {
-        const { jobId } = await publishCourseIngestionJob({
+        const { jobId, correlationId } = await publishCourseIngestionJob({
           userId,
           courseId: course._id.toString(),
           fileRef: courseFileRef(course._id.toString()),
           files: staged,
           requestId: req.get('X-Request-ID')
         });
+
+        // INGEST-07: point this course at the new job and reset the previous
+        // ingestion's progress/failure state.
+        course.jobId = jobId;
+        course.correlationId = correlationId;
+        course.ingestStage = null;
+        course.ingestProgress = 0;
+        course.ingestDetail = '';
+        course.ingestError = '';
+        await course.save();
 
         return res.status(202).json({
           jobId,

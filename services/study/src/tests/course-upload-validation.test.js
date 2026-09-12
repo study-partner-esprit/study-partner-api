@@ -160,6 +160,10 @@ describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
     const instance = Course.instances[0];
     expect(instance.save).toHaveBeenCalled();
 
+    // INGEST-07: upload stores the job linkage for ingest-status correlation.
+    expect(instance.jobId).toBe('job-1');
+    expect(instance.correlationId).toBe('corr-1');
+
     expect(publishAiJob).toHaveBeenCalledWith(
       'study.ingest.course',
       'user-123',
@@ -176,7 +180,9 @@ describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
   }, 10000);
 
   test('returns 503 and marks the course failed when the job bus is unavailable', async () => {
-    publishAiJob.mockRejectedValue(Object.assign(new Error('broker down'), { code: 'EBROKERDOWN' }));
+    publishAiJob.mockRejectedValue(
+      Object.assign(new Error('broker down'), { code: 'EBROKERDOWN' })
+    );
 
     const res = await request(app)
       .post('/api/v1/study/courses')
@@ -323,9 +329,7 @@ describe('INGEST-04 POST /api/v1/study/courses (polyglot/trailer/encryption → 
       .field('subject_id', 'subj-1')
       .attach(
         'files',
-        Buffer.from(
-          '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<< /Encrypt 9 0 R >>\n%%EOF'
-        ),
+        Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<< /Encrypt 9 0 R >>\n%%EOF'),
         { filename: 'locked.pdf', contentType: 'application/pdf' }
       );
 
@@ -352,20 +356,23 @@ describe('INGEST-04 POST /api/v1/study/courses (polyglot/trailer/encryption → 
 });
 
 describe('INGEST-05 POST /api/v1/study/courses/:courseId/files (async re-ingest → 202)', () => {
+  let reIngestCourse;
   beforeEach(() => {
     jest.clearAllMocks();
     Course.instances = [];
     Course.prototype = {};
     Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
-    Course.findOne.mockResolvedValue({
+    reIngestCourse = {
       _id: 'course-1',
       userId: 'user-123',
       title: 'Existing Course',
       subjectId: 'subj-1',
       files: [],
       status: 'completed',
+      ingestError: 'stale failure from a previous run',
       save: jest.fn().mockResolvedValue(true)
-    });
+    };
+    Course.findOne.mockResolvedValue(reIngestCourse);
     publishAiJob.mockResolvedValue({ messageId: 'job-re', correlationId: 'corr-re' });
   });
 
@@ -379,6 +386,12 @@ describe('INGEST-05 POST /api/v1/study/courses/:courseId/files (async re-ingest 
     expect(res.body.jobId).toBe('job-re');
     expect(res.body.courseId).toBe('course-1');
     expect(res.body.status).toBe('processing');
+
+    // INGEST-07: re-ingest re-points the job linkage and resets progress state.
+    expect(reIngestCourse.jobId).toBe('job-re');
+    expect(reIngestCourse.correlationId).toBe('corr-re');
+    expect(reIngestCourse.ingestError).toBe('');
+    expect(reIngestCourse.ingestProgress).toBe(0);
 
     expect(publishAiJob).toHaveBeenCalledWith(
       'study.ingest.course',

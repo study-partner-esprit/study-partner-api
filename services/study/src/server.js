@@ -17,15 +17,29 @@ async function startServer() {
     const stopUpdater = startCompetencyUpdater();
     logger.info('Competency updater started (BLOOM-08)');
 
+    // INGEST-07: track course ingestion progress/completion via RabbitMQ
+    let stopIngestStatusTracker = null;
+    if (process.env.RABBITMQ_URL) {
+      const tracker = require('./services/ingestStatus');
+      stopIngestStatusTracker = tracker.stopIngestStatusTracker;
+      try {
+        await tracker.startIngestStatusTracker();
+        logger.info('Ingest status tracker started (INGEST-07)');
+      } catch (err) {
+        logger.error('Failed to start ingest status tracker:', err);
+      }
+    }
+
     app.listen(PORT, () => {
       logger.info(`Study Management service listening on port ${PORT}`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
     });
 
-    // Wire graceful shutdown for the updater
+    // Wire graceful shutdown for the updater and the tracker
     process.on('SIGTERM', () => {
       logger.info('SIGTERM received, shutting down gracefully...');
       stopUpdater();
+      if (stopIngestStatusTracker) stopIngestStatusTracker().catch(() => {});
       process.exit(0);
     });
   } catch (error) {

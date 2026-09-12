@@ -287,6 +287,38 @@ const courseSchema = new mongoose.Schema(
       enum: ['processing', 'completed', 'failed'],
       default: 'processing'
     },
+    // INGEST-07: the job that (re)ingests this course — matches the AI
+    // envelope's messageId (jobId) and correlationId used to correlate
+    // progress/result events back to the course document.
+    jobId: {
+      type: String,
+      index: true
+    },
+    correlationId: {
+      type: String,
+      index: true
+    },
+    // INGEST-07: live ingestion progress surfaced via
+    // GET /api/v1/study/courses/:courseId/ingest-status.
+    ingestStage: {
+      type: String,
+      enum: ['parsing', 'enriching', 'embedding', 'indexing'],
+      default: null
+    },
+    ingestProgress: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: 0
+    },
+    ingestDetail: {
+      type: String,
+      default: ''
+    },
+    ingestError: {
+      type: String,
+      default: ''
+    },
     topics: [
       {
         title: String,
