@@ -18,7 +18,7 @@ function fakeMessage({ body = '{"x":1}', messageId, correlationId, headers = {} 
   };
 }
 
-function fakeChannel(queueContents) {
+function fakeChannel(queueContents, queue = 'ai.dlq.study.search.query') {
   const pending = [...queueContents];
   const state = { published: [], acked: [], nacked: [] };
   const ch = {
@@ -32,7 +32,7 @@ function fakeChannel(queueContents) {
       state.nacked.push({ msg, all, requeue });
     },
     async get(q) {
-      if (q !== 'ai.dlq.study.search.query') throw new Error('wrong queue ' + q);
+      if (q !== queue) throw new Error('wrong queue ' + q);
       return pending.length ? pending.shift() : null;
     }
   };
@@ -63,6 +63,28 @@ describe('replayDeadLetters', () => {
     expect(pub.opts.headers['x-last-failure']).toBeUndefined();
     expect(pub.opts.headers['x-original-message-id']).toBe('orig-id');
     expect(pub.opts.headers['x-replayed-from']).toBe('ai.dlq.study.search.query');
+    expect(state.acked).toHaveLength(1);
+  });
+
+  test('replays dead-lettered INGEST-07 jobs under the ingest type', async () => {
+    const msg = fakeMessage({
+      messageId: 'ingest-orig',
+      correlationId: 'ingest-corr',
+      headers: { [retryHeader]: 3, 'x-last-failure': 'tesseract OCR daemon timed out' }
+    });
+    const { ch, state } = fakeChannel([msg], 'ai.dlq.study.ingest.course');
+
+    const res = await replayDeadLetters(ch, { type: 'study.ingest.course' });
+
+    expect(res).toEqual({ inspected: 1, replayed: 1, dryRun: false });
+    const pub = state.published[0];
+    expect(pub.exchange).toBe(EXCHANGE_JOBS);
+    expect(pub.rk).toBe('study.ingest.course'); // fresh attempt → full budget again
+    expect(pub.opts.messageId).not.toBe('ingest-orig'); // fresh idempotency claim
+    expect(pub.opts.correlationId).toBe('ingest-corr'); // still correlates to the Course
+    expect(pub.opts.headers[retryHeader]).toBeUndefined();
+    expect(pub.opts.headers['x-original-message-id']).toBe('ingest-orig');
+    expect(pub.opts.headers['x-replayed-from']).toBe('ai.dlq.study.ingest.course');
     expect(state.acked).toHaveLength(1);
   });
 
