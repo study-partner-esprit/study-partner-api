@@ -1,15 +1,13 @@
 const express = require('express');
 const multer = require('multer');
+const fs = require('fs');
 const path = require('path');
-const { Course, Subject } = require('../models');
 const axios = require('axios');
-const FormData = require('form-data');
+const { Course, Subject } = require('../models');
 const { tierGate } = require('@study-partner/shared/tierGate');
 const { requireMultipart } = require('@study-partner/shared/middleware');
-const {
-  syncObjectivesForDocument,
-  deleteObjectivesForDocument
-} = require('../services/objectives');
+const { deleteObjectivesForDocument } = require('../services/objectives');
+const { publishCourseIngestionJob } = require('../services/ingestionJob');
 
 const router = express.Router();
 
@@ -19,6 +17,38 @@ const buildInternalHeaders = (authorization) => ({
   ...(authorization ? { Authorization: authorization } : {}),
   ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
 });
+
+// INGEST-05: move freshly-uploaded files into a course-scoped directory so the
+// async worker (INGEST-06) can find them via a single unambiguous fileRef.
+// Stored paths are relative to the uploads root.
+function stageCourseFiles(reqFiles, courseId) {
+  const courseUploadDir = path.join('uploads', 'courses', courseId);
+  fs.mkdirSync(courseUploadDir, { recursive: true });
+  return reqFiles.map((file) => {
+    const newPath = path.join(courseUploadDir, file.filename);
+    fs.renameSync(file.path, newPath);
+    return {
+      filename: file.filename,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      path: path.relative('uploads', newPath).replace(/\\/g, '/')
+    };
+  });
+}
+
+function courseFileRef(courseId) {
+  return path.join('uploads', 'courses', courseId).replace(/\\/g, '/');
+}
+
+function cleanupCourseFiles(courseId) {
+  const dir = path.join('uploads', 'courses', courseId);
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (err) {
+    console.warn(`Failed to cleanup course files for ${courseId}:`, err.message);
+  }
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -206,160 +236,38 @@ router.post(
 
       await course.save();
 
-      // Send files to AI service for processing
+      // INGEST-05: stage files under a course-scoped dir, then enqueue the
+      // async ingestion job. The request returns 202 { jobId } immediately —
+      // the worker (INGEST-06) parses/embeds and resolves the course status.
+      const staged = stageCourseFiles(req.files, course._id.toString());
+
       try {
-        const formData = new FormData();
-
-        // Add course data
-        formData.append('course_title', title);
-        formData.append('user_id', userId);
-        formData.append('subject_id', subject_id);
-
-        // Add files
-        req.files.forEach((file) => {
-          const fileBuffer = require('fs').readFileSync(file.path);
-          formData.append('files', fileBuffer, {
-            filename: file.originalname,
-            contentType: file.mimetype,
-            knownLength: file.size
-          });
+        const { jobId } = await publishCourseIngestionJob({
+          userId,
+          courseId: course._id.toString(),
+          fileRef: courseFileRef(course._id.toString()),
+          files: staged,
+          requestId: req.get('X-Request-ID')
         });
 
-        // Call AI service
-        const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-        const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
-          timeout: 300000 // 5 minutes timeout
+        console.log('Ingestion job triggered:', jobId);
+        return res.status(202).json({
+          jobId,
+          courseId: course._id.toString(),
+          status: 'processing'
         });
+      } catch (publishErr) {
+        console.error('Ingestion job enqueue failed:', publishErr.message);
 
-        console.log('AI service response:', JSON.stringify(aiResponse.data, null, 2));
-
-        // Transform AI service topics format to match our schema
-        const aiTopics = aiResponse.data.topics || [];
-        const transformedTopics = aiTopics.map((topic) => ({
-          title: topic.title,
-          subtopics: (topic.subtopics || []).map((sub) => ({
-            id: sub.id,
-            title: sub.title,
-            summary: sub.summary,
-            key_concepts: sub.key_concepts || [],
-            definitions: sub.definitions || [],
-            formulas: sub.formulas || [],
-            examples: sub.examples || [],
-            tokenized_chunks: sub.tokenized_chunks || [],
-            learning_objectives: sub.learning_objectives || []
-          }))
-        }));
-
-        // Update course with processed data
-        course.topics = transformedTopics;
-        course.aiCourseId = aiResponse.data.course_id; // Link to AI service course
-        course.status = 'completed';
-        course.processedAt = new Date();
-        await course.save();
-
-        console.log('Course saved with', transformedTopics.length, 'topics');
-
-        // BLOOM-06: persist learning objectives to separate collection
-        try {
-          const objStats = await syncObjectivesForDocument({
-            userId,
-            documentId: course._id.toString(),
-            topics: transformedTopics
-          });
-          console.log(
-            'Learning objectives synced:',
-            objStats.inserted,
-            'inserted,',
-            objStats.updated,
-            'updated,',
-            objStats.superseded,
-            'superseded'
-          );
-        } catch (objErr) {
-          console.warn('Learning objective sync failed (non-fatal):', objErr.message);
-        }
-
-        // Auto-award XP on course upload
-        try {
-          const USER_PROFILE_URL =
-            process.env.USER_PROFILE_SERVICE_URL || 'http://user-profile-service:3002';
-          await axios.post(
-            `${USER_PROFILE_URL}/api/v1/users/gamification/award-xp`,
-            {
-              action: 'course_upload',
-              metadata: { courseId: course._id.toString(), title: course.title }
-            },
-            {
-              headers: buildInternalHeaders(req.headers.authorization)
-            }
-          );
-          // Progress quests
-          await axios.post(
-            `${USER_PROFILE_URL}/api/v1/users/quests/progress`,
-            {
-              action: 'course_upload'
-            },
-            {
-              headers: buildInternalHeaders(req.headers.authorization)
-            }
-          );
-        } catch (xpErr) {
-          console.warn('XP/Quest award failed for course upload:', xpErr.message);
-        }
-
-        // Clean up uploaded files
-        req.files.forEach((file) => {
-          try {
-            require('fs').unlinkSync(file.path);
-          } catch (err) {
-            console.warn(`Failed to cleanup file ${file.path}:`, err);
-          }
-        });
-      } catch (aiError) {
-        console.error('❌ AI service error:', aiError.message);
-        console.error('Error details:', aiError.response?.data || aiError);
-
-        // Update course status to failed
+        // No job was enqueued → nothing will parse these files. Mark the course
+        // failed and remove the staged files so nothing is orphaned.
         course.status = 'failed';
-        course.processedAt = new Date();
-        course.warning = `AI service processing failed: ${aiError.message}`;
+        course.warning = 'ingestion job could not be enqueued';
         await course.save();
+        cleanupCourseFiles(course._id.toString());
 
-        // Clean up uploaded files
-        req.files.forEach((file) => {
-          try {
-            require('fs').unlinkSync(file.path);
-          } catch (err) {
-            console.warn(`Failed to cleanup file ${file.path}:`, err);
-          }
-        });
-
-        return res.status(500).json({
-          error: 'Course processing failed',
-          message: aiError.message,
-          course: {
-            id: course._id,
-            title: course.title,
-            status: 'failed'
-          }
-        });
+        return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
       }
-
-      return res.status(201).json({
-        course: {
-          id: course._id.toString(),
-          title: course.title,
-          description: course.description,
-          subjectId: course.subjectId,
-          status: course.status,
-          topicsCount: course.topics?.length || 0,
-          filesCount: course.files?.length || 0,
-          aiCourseId: course.aiCourseId,
-          processedAt: course.processedAt,
-          createdAt: course.createdAt,
-          updatedAt: course.updatedAt
-        }
-      });
     } catch (error) {
       console.error('Error creating course:', error);
       res.status(500).json({ error: 'Failed to create course' });
@@ -460,132 +368,31 @@ router.post(
       course.status = 'processing';
       await course.save();
 
-      // Prepare all files for re-processing
-      const allFiles = course.files
-        .map((file) => {
-          // For existing files, we need to check if they still exist or recreate them
-          // For now, we'll only process the new files since old ones might be deleted
-          // In a production system, you'd want to store files permanently
-          const filePath = path.join('uploads', file.filename);
-          if (require('fs').existsSync(filePath)) {
-            return {
-              path: filePath,
-              originalname: file.originalName,
-              mimetype: 'application/pdf' // Assume PDF for now
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
+      // INGEST-05: stage the newly added files and enqueue async re-processing.
+      const staged = stageCourseFiles(req.files, course._id.toString());
 
-      // Add the new uploaded files
-      allFiles.push(...req.files);
-
-      // Send all files to AI service for re-processing
       try {
-        const formData = new FormData();
-
-        // Add course data
-        formData.append('course_title', course.title);
-        formData.append('user_id', userId);
-        formData.append('subject_id', course.subjectId);
-
-        // Add all files
-        allFiles.forEach((file) => {
-          const fileBuffer = require('fs').readFileSync(file.path);
-          formData.append('files', fileBuffer, {
-            filename: file.originalname || file.originalName,
-            contentType: file.mimetype || 'application/pdf',
-            knownLength: file.size
-          });
+        const { jobId } = await publishCourseIngestionJob({
+          userId,
+          courseId: course._id.toString(),
+          fileRef: courseFileRef(course._id.toString()),
+          files: staged,
+          requestId: req.get('X-Request-ID')
         });
 
-        // Call AI service
-        const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-        const aiResponse = await axios.post(`${aiServiceUrl}/api/ai/courses/ingest`, formData, {
-          timeout: 300000 // 5 minutes timeout
+        return res.status(202).json({
+          jobId,
+          courseId: course._id.toString(),
+          status: 'processing'
         });
-
-        // Update course with re-processed data (carry learning_objectives)
-        const aiTopics = aiResponse.data.topics || [];
-        course.topics = aiTopics.map((topic) => ({
-          title: topic.title,
-          subtopics: (topic.subtopics || []).map((sub) => ({
-            id: sub.id,
-            title: sub.title,
-            summary: sub.summary,
-            key_concepts: sub.key_concepts || [],
-            definitions: sub.definitions || [],
-            formulas: sub.formulas || [],
-            examples: sub.examples || [],
-            tokenized_chunks: sub.tokenized_chunks || [],
-            learning_objectives: sub.learning_objectives || []
-          }))
-        }));
-        course.status = 'completed';
-        course.processedAt = new Date();
-        await course.save();
-
-        // BLOOM-06: persist learning objectives (version bump + supersede)
-        try {
-          const objStats = await syncObjectivesForDocument({
-            userId,
-            documentId: course._id.toString(),
-            topics: course.topics
-          });
-          console.log(
-            'Learning objectives re-synced:',
-            objStats.inserted,
-            'inserted,',
-            objStats.updated,
-            'updated,',
-            objStats.superseded,
-            'superseded'
-          );
-        } catch (objErr) {
-          console.warn('Learning objective sync failed (non-fatal):', objErr.message);
-        }
-
-        // Clean up uploaded files
-        req.files.forEach((file) => {
-          try {
-            require('fs').unlinkSync(file.path);
-          } catch (err) {
-            console.warn(`Failed to cleanup file ${file.path}:`, err);
-          }
-        });
-      } catch (aiError) {
+      } catch (publishErr) {
+        console.error('Ingestion job enqueue failed:', publishErr.message);
         course.status = 'failed';
         await course.save();
+        cleanupCourseFiles(course._id.toString());
 
-        return res.status(500).json({
-          error: 'Files added but re-processing failed',
-          course: {
-            id: course._id.toString(),
-            title: course.title,
-            status: course.status,
-            filesCount: course.files?.length || 0,
-            files: course.files
-          }
-        });
+        return res.status(503).json({ error: 'AI job bus unavailable, retry later' });
       }
-
-      return res.json({
-        message: 'Files added and course re-processed successfully',
-        course: {
-          id: course._id.toString(),
-          title: course.title,
-          description: course.description,
-          subjectId: course.subjectId,
-          status: course.status,
-          topics: course.topics,
-          files: course.files,
-          topicsCount: course.topics?.length || 0,
-          filesCount: course.files?.length || 0,
-          processedAt: course.processedAt,
-          updatedAt: course.updatedAt
-        }
-      });
     } catch (error) {
       console.error('Error adding files to course:', error);
       res.status(500).json({ error: 'Failed to add files to course' });

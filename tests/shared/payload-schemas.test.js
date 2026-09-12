@@ -112,12 +112,16 @@ describe('validateJobPayload routing', () => {
     ).toBe(false);
   });
 
-  test('plan and coach use strict validators; eval/search/ingest keep basic rules', () => {
+  test('plan and coach use strict validators; eval/search keep basic rules', () => {
     // eval still requires sessionId (EVAL-02 basic rule preserved)
     expect(validateJobPayload('study.eval.step', {}).valid).toBe(false);
     expect(validateJobPayload('study.eval.step', { sessionId: 's' }).valid).toBe(true);
     expect(validateJobPayload('study.search.query', { query: '' }).valid).toBe(false);
-    expect(validateJobPayload('study.ingest.course', { fileRef: 'f' }).valid).toBe(true);
+    // INGEST-05: ingest is now strict too — courseId + fileRef are required
+    expect(validateJobPayload('study.ingest.course', { fileRef: 'f' }).valid).toBe(false);
+    expect(
+      validateJobPayload('study.ingest.course', { courseId: 'c-1', fileRef: 'uploads/x' }).valid
+    ).toBe(true);
   });
 
   test('all registered job types have validators', () => {
@@ -367,5 +371,65 @@ describe('validateSessionStats (COACH-13)', () => {
     expect(validateCoachPayload({ session_stats: { ...valid, break_count: true } }).valid).toBe(false);
     expect(validateCoachPayload({ session_stats: { ...valid, hacked: 1 } }).valid).toBe(false);
     expect(validateCoachPayload({ session_stats: 'nope' }).valid).toBe(false);
+  });
+});
+
+describe('validateIngestPayload (study.ingest.course / INGEST-05)', () => {
+  const valid = {
+    courseId: 'course-1',
+    fileRef: 'uploads/courses/course-1',
+    files: [
+      {
+        filename: 'abc.pdf',
+        originalName: 'notes.pdf',
+        mimetype: 'application/pdf',
+        size: 2048,
+        path: 'courses/course-1/abc.pdf'
+      }
+    ]
+  };
+
+  test('accepts a valid ingest payload', () => {
+    expect(validateJobPayload('study.ingest.course', valid)).toEqual({ valid: true, errors: [] });
+  });
+
+  test('requires courseId + fileRef non-empty within limits', () => {
+    expect(validateJobPayload('study.ingest.course', {}).valid).toBe(false);
+    expect(validateJobPayload('study.ingest.course', { ...valid, courseId: ' ' }).valid).toBe(false);
+    expect(
+      validateJobPayload('study.ingest.course', { courseId: 'c', fileRef: 'x'.repeat(LIMITS.CONTENT_REF_MAX_CHARS + 1) }).valid
+    ).toBe(false);
+  });
+
+  test('rejects file-metadata violations', () => {
+    expect(
+      validateJobPayload('study.ingest.course', {
+        ...valid,
+        files: [{ ...valid.files[0], filename: '' }]
+      }).valid
+    ).toBe(false);
+    expect(
+      validateJobPayload('study.ingest.course', {
+        ...valid,
+        files: [{ ...valid.files[0], size: -1 }]
+      }).valid
+    ).toBe(false);
+    expect(
+      validateJobPayload('study.ingest.course', { ...valid, files: 'nope' }).valid
+    ).toBe(false);
+  });
+
+  test('rejects more than the max file count', () => {
+    const files = Array.from({ length: LIMITS.INGEST_MAX_FILES + 1 }, (_, i) => ({
+      ...valid.files[0],
+      filename: `f${i}.pdf`
+    }));
+    expect(validateJobPayload('study.ingest.course', { ...valid, files }).valid).toBe(false);
+  });
+
+  test('rejects unknown top-level fields', () => {
+    expect(validateJobPayload('study.ingest.course', { ...valid, rawContent: 'x' }).valid).toBe(
+      false
+    );
   });
 });
