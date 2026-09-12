@@ -23,6 +23,13 @@ const EXCHANGE_RESULTS = 'ai.results';
 
 const RESULT_QUEUE = 'ai.results.inbox';
 
+/**
+ * SEPARATE routing key for staged progress events (INGEST-06). Workers publish
+ * progress on ai.results with this key so the result inbox (bound to `result`)
+ * never sees them; INGEST-07 binds a progress consumer here.
+ */
+const PROGRESS_ROUTING_KEY = 'progress';
+
 const RETRY_DELAYS_MS = Object.freeze(
   (() => {
     // Env override exists for integration tests (tiny delays); production
@@ -120,6 +127,7 @@ module.exports = {
   EXCHANGE_DLX,
   EXCHANGE_RESULTS,
   RESULT_QUEUE,
+  PROGRESS_ROUTING_KEY,
   RETRY_DELAYS_MS,
   MAX_RETRIES,
   workQueueName,
