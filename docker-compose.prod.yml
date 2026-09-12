@@ -233,6 +233,11 @@ services:
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
+      - INGEST_UPLOADS_DIR=/app/uploads
+    volumes:
+      # INGEST-05/06: the ingestion worker reads staged course files from the
+      # SAME uploads volume the study service writes to.
+      - study_uploads:/app/uploads
     depends_on:
       mongodb:
         condition: service_healthy
