@@ -5,7 +5,9 @@ const {
   validateUploadMetadata,
   validateUploadFile,
   validateUploadFiles,
-  sniffMagicBytes
+  sniffMagicBytes,
+  checkPdfStructure,
+  printableTextRatio
 } = require('../../shared/uploadValidation');
 
 function pdfBuffer() {
@@ -168,5 +170,117 @@ describe('validateUploadFiles (multipart arrays)', () => {
     ]);
     expect(r.valid).toBe(false);
     expect(r.file).toBe('payload.bin');
+  });
+});
+
+describe('INGEST-04 checkPdfStructure (header + trailer + polyglot + encryption)', () => {
+  const completePdf = Buffer.concat([
+    Buffer.from('%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n'),
+    Buffer.from('   \n')
+  ]);
+
+  test('accepts a PDF with a valid %%EOF trailer (trailing whitespace ok)', () => {
+    expect(checkPdfStructure(completePdf)).toEqual([]);
+  });
+
+  test('flags a PDF with no %%EOF trailer', () => {
+    const truncated = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n');
+    expect(checkPdfStructure(truncated).join(' ')).toContain('missing');
+  });
+
+  test('flags a polyglot PDF with executable content spliced after %%EOF', () => {
+    const polyglot = Buffer.concat([
+      completePdf,
+      Buffer.from('MZ\x90\x00executable-payload-here')
+    ]);
+    expect(checkPdfStructure(polyglot).join(' ')).toContain('polyglot');
+  });
+
+  test('flags an encrypted PDF that declares /Encrypt in its trailer', () => {
+    const encrypted = Buffer.from(
+      '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<< /Encrypt 9 0 R >>\n%%EOF'
+    );
+    expect(checkPdfStructure(encrypted).join(' ')).toContain('encrypted');
+  });
+});
+
+describe('INGEST-04 printableTextRatio (text content heuristics)', () => {
+  test('accepts legible ASCII text', () => {
+    expect(printableTextRatio(textBuffer())).toBeGreaterThan(0.9);
+  });
+
+  test('accepts multi-byte UTF-8 (french accents)', () => {
+    const utf8 = Buffer.from('Introduction au calcul différentiel.\nÉquations dérivées.', 'utf8');
+    expect(printableTextRatio(utf8)).toBeGreaterThan(0.9);
+  });
+
+  test('flags binary payloads masked behind a text-like head', () => {
+    const masked = Buffer.concat([Buffer.from('hello world\n'), Buffer.from([0x00, 0xff, 0xfe, 0x01, 0xff])]);
+    expect(printableTextRatio(masked)).toBeLessThan(0.9);
+  });
+});
+
+describe('INGEST-04 validateUploadFile (structural/content rejection)', () => {
+  test('rejects a truncated PDF (no trailer) with 422-class errors', () => {
+    const r = validateUploadFile({
+      originalname: 'cut.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n')
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('trailer');
+  });
+
+  test('rejects a polyglot PDF via validateUploadFile', () => {
+    const polyglot = Buffer.concat([
+      Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF'),
+      Buffer.from('MZ\x90\x00')
+    ]);
+    const r = validateUploadFile({
+      originalname: 'sneaky.pdf',
+      mimetype: 'application/pdf',
+      buffer: polyglot
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('polyglot');
+  });
+
+  test('rejects an encrypted PDF with a clear message', () => {
+    const encrypted = Buffer.from(
+      '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<< /Encrypt 9 0 R >>\n%%EOF'
+    );
+    const r = validateUploadFile({
+      originalname: 'locked.pdf',
+      mimetype: 'application/pdf',
+      buffer: encrypted
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('encrypted');
+  });
+
+  test('rejects a masked-binary text file via validateUploadFile', () => {
+    const masked = Buffer.concat([Buffer.from('hello\n'), Buffer.alloc(40, 0xff)]);
+    const r = validateUploadFile({
+      originalname: 'masked.txt',
+      mimetype: 'text/plain',
+      buffer: masked
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('not readable text');
+  });
+
+  test('accepts a complete PDF + french text batch', () => {
+    const r = validateUploadFiles([
+      {
+        originalname: 'ok.pdf',
+        mimetype: 'application/pdf',
+        buffer: Buffer.concat([
+          Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF'),
+          Buffer.from('\n')
+        ])
+      },
+      { originalname: 'cours.txt', mimetype: 'text/plain', buffer: textBuffer() }
+    ]);
+    expect(r.valid).toBe(true);
   });
 });
