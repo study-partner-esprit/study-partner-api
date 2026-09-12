@@ -150,3 +150,47 @@ describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
     expect(instance.save).toHaveBeenCalled();
   }, 10000);
 });
+
+describe('INGEST-02 POST /api/v1/study/courses (size limits → 413)', () => {
+  const { MAX_UPLOAD_MB } = require('@study-partner/shared/uploadValidation');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Course.instances = [];
+    Course.prototype = {}; // no-op safety
+    Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
+  });
+
+  test(`rejects a single file over ${MAX_UPLOAD_MB}MB with 413`, async () => {
+    const oversized = Buffer.alloc((MAX_UPLOAD_MB + 1) * 1024 * 1024, 0x25);
+
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Oversized Course')
+      .field('subject_id', 'subj-1')
+      .attach('files', oversized, { filename: 'big.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(413);
+    expect(res.body.error).toMatch(new RegExp(`${MAX_UPLOAD_MB}MB`));
+    expect(Course).not.toHaveBeenCalled();
+    expect(Course.instances).toHaveLength(0);
+  }, 30000);
+
+  test('leaves no residue on disk after a size-limit rejection', async () => {
+    const fs = require('fs');
+    const before = fs.readdirSync('uploads');
+    const oversized = Buffer.alloc((MAX_UPLOAD_MB + 1) * 1024 * 1024, 0x41);
+
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Oversized Course 2')
+      .field('subject_id', 'subj-1')
+      .attach('files', oversized, { filename: 'big.txt', contentType: 'text/plain' });
+
+    expect(res.status).toBe(413);
+    const after = fs.readdirSync('uploads');
+    expect(after).toEqual(before);
+  }, 30000);
+});
