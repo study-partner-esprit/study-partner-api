@@ -25,6 +25,18 @@ const ALLOWED_TYPES = {
 /** Reasonable header-read size for magic-byte sniffing (PDF header is tiny). */
 const SNIFF_BYTES = 512;
 
+/** INGEST-04: PDF must end with a real `%%EOF` trailer marker. */
+const PDF_EOF_MARKER = '%%EOF';
+
+/**
+ * INGEST-04: PDFs whose trailer declares encryption (`/Encrypt <n> <n> R`)
+ * are rejected — we do not teach our parsers attacker-controlled passwords.
+ */
+const PDF_ENCRYPT_RE = /\/Encrypt\s+\d+\s+\d+\s+R/;
+
+/** INGEST-04: minimum printable-character ratio for text/plain uploads. */
+const MIN_TEXT_PRINTABLE_RATIO = 0.9;
+
 /** Binary/executable magic byte signatures we reject outright. */
 const BINARY_MAGICS = [
   [0x7f, 0x45, 0x4c, 0x46], // ELF
@@ -65,6 +77,98 @@ function sniffMagicBytes(buffer) {
   }
 
   return 'text';
+}
+
+/**
+ * INGEST-04: Check a PDF buffer for structural completeness AND polyglot
+ * content. The `%PDF-` header (checked via sniffMagicBytes) is not enough:
+ * a polyglot file can start with a valid header and hide executable content
+ * after the trailer, or omit the trailer entirely to evade parsers.
+ *
+ * @param {Buffer} buffer
+ * @returns {string[]} structural problems (empty when the PDF is sound)
+ */
+function checkPdfStructure(buffer) {
+  const errors = [];
+
+  // Locate the last `%%EOF` trailer marker.
+  const marker = Buffer.from(PDF_EOF_MARKER, 'ascii');
+  const eofIdx = buffer.lastIndexOf(marker);
+  if (eofIdx === -1) {
+    errors.push(`missing "${PDF_EOF_MARKER}" trailer - not a complete PDF`);
+    return errors;
+  }
+
+  // After the trailer only whitespace is legal; anything else means the file
+  // was spliced together (polyglot). Reject rather than guess.
+  const tail = buffer.subarray(eofIdx + marker.length);
+  for (let i = 0; i < tail.length; i++) {
+    const byte = tail[i];
+    const isWhitespace = byte === 0x09 || byte === 0x0a || byte === 0x0d || byte === 0x20;
+    if (!isWhitespace) {
+      errors.push(
+        'unexpected content after PDF trailer - polyglot files are not allowed'
+      );
+      return errors;
+    }
+  }
+
+  // Reject encrypted/password-protected documents with a clear message.
+  const trailerRegion = buffer.subarray(Math.max(0, eofIdx - 65536), eofIdx + marker.length);
+  if (PDF_ENCRYPT_RE.test(trailerRegion.toString('latin1'))) {
+    errors.push('encrypted/password-protected PDFs are not supported');
+  }
+
+  return errors;
+}
+
+/**
+ * INGEST-04: printable-character ratio for text/plain uploads. Legible text
+ * stays well above the threshold; binary payloads masked behind a text-looking
+ * head drop below it. ASCII printable bytes count, as do *valid* multi-byte
+ * UTF-8 sequences (so french/unicode content passes) — stray high bytes,
+ * lone continuation bytes and 0xFF/0xFE runs do not.
+ */
+function printableTextRatio(buffer) {
+  if (buffer.length === 0) return 1;
+  const len = buffer.length;
+  let printable = 0;
+
+  for (let i = 0; i < len; i++) {
+    const byte = buffer[i];
+
+    // Whitespace + printable ASCII.
+    if (byte === 0x09 || byte === 0x0a || byte === 0x0d) {
+      printable++;
+      continue;
+    }
+    if (byte >= 0x20 && byte <= 0x7f) {
+      printable++;
+      continue;
+    }
+
+    // Valid UTF-8 multi-byte sequence (2-4 bytes, well-formed).
+    if (byte >= 0xc2 && byte <= 0xf4) {
+      const continuations = byte <= 0xdf ? 1 : byte <= 0xef ? 2 : 3;
+      let valid = true;
+      for (let k = 1; k <= continuations; k++) {
+        const next = buffer[i + k];
+        if (next === undefined || next < 0x80 || next > 0xbf) {
+          valid = false;
+          break;
+        }
+      }
+      if (valid) {
+        printable += continuations + 1;
+        i += continuations;
+        continue;
+      }
+    }
+    // Anything else (0x00-0x08, 0x0c, 0x0e-0x1f, lone continuations,
+    // 0xf5-0xff, broken sequences) counts against readability.
+  }
+
+  return printable / len;
 }
 
 /**
@@ -113,6 +217,20 @@ function validateUploadFile(file) {
       } else if (mimetype === 'text/plain' && sniffed === 'pdf') {
         errors.push('declared text/plain but content is a PDF');
       }
+
+      // INGEST-04: only structure-check content that already passed the header
+      // sniff, so PDF and text diagnostics stay precise.
+      if (errors.length === 0 && mimetype === 'application/pdf' && sniffed === 'pdf') {
+        errors.push(...checkPdfStructure(buffer));
+      }
+      if (errors.length === 0 && mimetype === 'text/plain' && sniffed === 'text') {
+        const ratio = printableTextRatio(buffer);
+        if (ratio < MIN_TEXT_PRINTABLE_RATIO) {
+          errors.push(
+            `content is not readable text (printable ratio ${(ratio * 100).toFixed(1)}%)`
+          );
+        }
+      }
     }
   }
   return { valid: errors.length === 0, errors };
@@ -138,8 +256,11 @@ module.exports = {
   SNIFF_BYTES,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
+  MIN_TEXT_PRINTABLE_RATIO,
   validateUploadMetadata,
   validateUploadFile,
   validateUploadFiles,
-  sniffMagicBytes
+  sniffMagicBytes,
+  checkPdfStructure,
+  printableTextRatio
 };
