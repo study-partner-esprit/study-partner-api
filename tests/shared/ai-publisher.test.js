@@ -34,6 +34,21 @@ jest.mock('amqplib', () => {
     return ch;
   }
 
+  function makeChannel() {
+    const ch = {
+      assertExchange: jest.fn().mockResolvedValue({}),
+      assertQueue: jest.fn().mockResolvedValue({}),
+      bindQueue: jest.fn().mockResolvedValue({}),
+      prefetch: jest.fn(),
+      consume: jest.fn(),
+      ack: jest.fn(),
+      nack: jest.fn(),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue({})
+    };
+    return ch;
+  }
+
   function makeConnection() {
     const conn = {
       // Real amqplib creates a fresh channel per call; mirror that and track
@@ -44,7 +59,11 @@ jest.mock('amqplib', () => {
         state.confirmChannel = ch;
         return ch;
       }),
-      createChannel: jest.fn(),
+      createChannel: jest.fn(async () => {
+        const ch = makeChannel();
+        state.channels.push(ch);
+        return ch;
+      }),
       close: jest.fn().mockResolvedValue({}),
       on: jest.fn()
     };
@@ -64,10 +83,20 @@ jest.mock('amqplib', () => {
 const amqp = require('amqplib');
 const {
   publishAiJob,
+  consumeAiResults,
+  consumeAiProgress,
+  consumeIngestResults,
   ensureTopologyForType,
   closeAiMessaging
 } = require('../../shared/ai-messaging/publisher');
-const { EXCHANGE_JOBS } = require('../../shared/ai-messaging/topology');
+const {
+  EXCHANGE_JOBS,
+  EXCHANGE_RESULTS,
+  RESULT_QUEUE,
+  PROGRESS_QUEUE,
+  INGEST_RESULT_QUEUE,
+  PROGRESS_ROUTING_KEY
+} = require('../../shared/ai-messaging/topology');
 
 const UUID_A = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 
@@ -220,5 +249,101 @@ describe('ensureTopologyForType', () => {
       'ai.dlx',
       'study.eval.step'
     );
+  });
+});
+
+describe('ai.results consumers (INGEST-07 queues)', () => {
+  // Capture the message handler registered by channel.consume.
+  function getConsumeHandler() {
+    const ch = amqp.__state.channels[amqp.__state.channels.length - 1];
+    expect(ch.consume).toHaveBeenCalled();
+    return {
+      ch,
+      handler: ch.consume.mock.calls[0][1],
+      queue: ch.consume.mock.calls[0][0]
+    };
+  }
+
+  const progressEnvelope = {
+    messageId: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+    correlationId: '0f8e2d1a-3b4c-4d6e-8f80-91a2b3c4d5e6',
+    type: 'study.ingest.course',
+    version: '1',
+    userId: 'u-1',
+    requestId: 'req-ing',
+    timestamp: '2026-08-19T08:00:00Z',
+    status: 'progress',
+    stage: 'parsing',
+    progress: 0.1,
+    detail: 'parsing 1 file(s)'
+  };
+
+  test('consumeAiProgress binds the progress queue to ai.results on `progress`', async () => {
+    await consumeAiProgress(jest.fn());
+
+    const ch = amqp.__state.channels[amqp.__state.channels.length - 1];
+    expect(ch.assertExchange).toHaveBeenCalledWith(EXCHANGE_RESULTS, 'direct', { durable: true });
+    expect(ch.assertQueue).toHaveBeenCalledWith(PROGRESS_QUEUE, { durable: true });
+    expect(ch.bindQueue).toHaveBeenCalledWith(
+      PROGRESS_QUEUE,
+      EXCHANGE_RESULTS,
+      PROGRESS_ROUTING_KEY
+    );
+    expect(ch.prefetch).toHaveBeenCalledWith(10);
+    expect(ch.consume).toHaveBeenCalledWith(PROGRESS_QUEUE, expect.any(Function), { noAck: false });
+  });
+
+  test('consumeIngestResults binds the ingest queue to ai.results on `result`', async () => {
+    await consumeIngestResults(jest.fn());
+
+    const ch = amqp.__state.channels[amqp.__state.channels.length - 1];
+    expect(ch.assertQueue).toHaveBeenCalledWith(INGEST_RESULT_QUEUE, { durable: true });
+    expect(ch.bindQueue).toHaveBeenCalledWith(INGEST_RESULT_QUEUE, EXCHANGE_RESULTS, 'result');
+    expect(ch.consume).toHaveBeenCalledWith(INGEST_RESULT_QUEUE, expect.any(Function), {
+      noAck: false
+    });
+  });
+
+  test('consumeAiResults still binds the canonical orchestrator inbox', async () => {
+    await consumeAiResults(jest.fn());
+    const ch = amqp.__state.channels[amqp.__state.channels.length - 1];
+    expect(ch.assertQueue).toHaveBeenCalledWith(RESULT_QUEUE, { durable: true });
+    expect(ch.bindQueue).toHaveBeenCalledWith(RESULT_QUEUE, EXCHANGE_RESULTS, 'result');
+  });
+
+  test('progress consumer acks a valid progress envelope and invokes the handler', async () => {
+    const handler = jest.fn().mockResolvedValue(undefined);
+    await consumeAiProgress(handler);
+    const { ch, handler: consume } = getConsumeHandler();
+
+    await consume({
+      content: Buffer.from(JSON.stringify(progressEnvelope)),
+      fields: { redelivered: false }
+    });
+
+    expect(handler).toHaveBeenCalledWith(progressEnvelope);
+    expect(ch.ack).toHaveBeenCalledTimes(1);
+    expect(ch.nack).not.toHaveBeenCalled();
+  });
+
+  test('progress consumer dead-letters (nack, no requeue) an invalid envelope', async () => {
+    const handler = jest.fn();
+    await consumeAiProgress(handler);
+    const { ch, handler: consume } = getConsumeHandler();
+
+    await consume({
+      content: Buffer.from(JSON.stringify({ ...progressEnvelope, stage: 'compiling' })),
+      fields: { redelivered: false }
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(ch.nack).toHaveBeenCalledWith(expect.anything(), false, false);
+  });
+
+  test('conflicting consumers share one channel per queue (idempotent start)', async () => {
+    await consumeAiProgress(() => {});
+    const channelsAfterFirst = amqp.__state.channels.length;
+    await consumeAiProgress(() => {});
+    expect(amqp.__state.channels.length).toBe(channelsAfterFirst);
   });
 });
