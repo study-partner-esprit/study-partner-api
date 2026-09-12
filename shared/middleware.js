@@ -175,6 +175,22 @@ function healthCheck(serviceName) {
  */
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+/**
+ * INGEST-03: require `multipart/form-data` on upload routes.
+ * Refuses anything else with 415 before it can reach multer/parsers.
+ */
+function requireMultipart(req, res, next) {
+  if (req.method === 'POST' || req.method === 'PUT') {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+      const err = new Error('Unsupported media type - this endpoint requires multipart/form-data');
+      err.statusCode = 415;
+      return next(err);
+    }
+  }
+  next();
+}
+
 module.exports = {
   corsMiddleware,
   securityMiddleware,
@@ -182,5 +198,6 @@ module.exports = {
   errorHandler,
   rateLimiter,
   healthCheck,
-  asyncHandler
+  asyncHandler,
+  requireMultipart
 };

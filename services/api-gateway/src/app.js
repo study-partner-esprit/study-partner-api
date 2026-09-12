@@ -6,6 +6,7 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
+  requireMultipart,
   logger
 } = require('@study-partner/shared');
 
@@ -132,6 +133,11 @@ app.use(
     pathRewrite: { '^/api/v1/users': '/api/v1/users' }
   })
 );
+// INGEST-03: course uploads must arrive as multipart/form-data. Reject anything
+// else (415) before it reaches the study service, where multer would choke on it.
+app.post('/api/v1/study/courses', requireMultipart);
+app.post('/api/v1/study/courses/:courseId/files', requireMultipart);
+
 app.use(
   '/api/v1/study',
   createProxyMiddleware({
