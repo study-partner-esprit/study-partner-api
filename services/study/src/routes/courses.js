@@ -5,6 +5,7 @@ const { Course, Subject } = require('../models');
 const axios = require('axios');
 const FormData = require('form-data');
 const { tierGate } = require('@study-partner/shared/tierGate');
+const { requireMultipart } = require('@study-partner/shared/middleware');
 const {
   syncObjectivesForDocument,
   deleteObjectivesForDocument
@@ -167,6 +168,7 @@ router.get('/', async (req, res) => {
 router.post(
   '/',
   tierGate('vip', 'vip_plus', 'trial'),
+  requireMultipart,
   withUploadError(upload.array('files', 10)),
   sniffUploadedFiles,
   async (req, res) => {
@@ -428,6 +430,7 @@ router.delete('/:courseId', async (req, res) => {
 router.post(
   '/:courseId/files',
   tierGate('vip', 'vip_plus', 'trial'),
+  requireMultipart,
   withUploadError(upload.array('files', 10)),
   sniffUploadedFiles,
   async (req, res) => {

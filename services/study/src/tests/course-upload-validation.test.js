@@ -194,3 +194,36 @@ describe('INGEST-02 POST /api/v1/study/courses (size limits → 413)', () => {
     expect(after).toEqual(before);
   }, 30000);
 });
+
+describe('INGEST-03 POST /api/v1/study/courses (content-type allowlist → 415)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Course.instances = [];
+    Course.prototype = {}; // no-op safety
+    Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
+  });
+
+  test('rejects JSON-typed upload with 415 before any persistence', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .set('Content-Type', 'application/json')
+      .send({ title: 'Bad', subject_id: 'subj-1' });
+
+    expect(res.status).toBe(415);
+    expect(res.body.error).toMatch(/multipart\/form-data/);
+    expect(Course).not.toHaveBeenCalled();
+    expect(Course.instances).toHaveLength(0);
+  });
+
+  test('rejects non-multipart re-ingest request with 415', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses/some-course/files')
+      .set(authHeader())
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('file=not-a-file');
+
+    expect(res.status).toBe(415);
+    expect(res.body.error).toMatch(/multipart\/form-data/);
+  });
+});
