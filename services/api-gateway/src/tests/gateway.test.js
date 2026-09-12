@@ -38,4 +38,36 @@ describe('API Gateway', () => {
       expect(res.headers['access-control-allow-origin']).toBeDefined();
     });
   });
+
+  describe('INGEST-03 content-type allowlist', () => {
+    it('rejects JSON POST to course upload with 415', async () => {
+      const res = await request(app)
+        .post('/api/v1/study/courses')
+        .set('Content-Type', 'application/json')
+        .send({ title: 'Bad', subject_id: 'subj-1' });
+
+      expect(res.status).toBe(415);
+      expect(res.body.error).toMatch(/multipart\/form-data/);
+    });
+
+    it('rejects JSON POST to re-ingest route with 415', async () => {
+      const res = await request(app)
+        .post('/api/v1/study/courses/course-1/files')
+        .set('Content-Type', 'application/x-www-form-urlencoded')
+        .send('file=not-a-file');
+
+      expect(res.status).toBe(415);
+      expect(res.body.error).toMatch(/multipart\/form-data/);
+    });
+
+    it('allows multipart/form-data through to the proxy', async () => {
+      const res = await request(app)
+        .post('/api/v1/study/courses')
+        .set('Content-Type', 'multipart/form-data; boundary=----x')
+        .send('--x\r\n\r\n--x--');
+
+      // Reaches the proxy (no downstream service running in unit test) → 502 proxy error.
+      expect(res.status).toBe(502);
+    });
+  });
 });
