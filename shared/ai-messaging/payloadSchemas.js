@@ -414,6 +414,84 @@ const SCHEDULE_FIELDS = new Set([
   'reasoning'
 ]);
 
+/** INGEST-05 — `study.ingest.course` payload. Python mirror:
+ *  workers/schemas.py IngestionRequest — limits MUST stay identical. */
+const INGEST_MAX_FILES = 10;
+const INGEST_FILENAME_MAX_CHARS = 256;
+const INGEST_MIME_MAX_CHARS = 128;
+
+/**
+ * Strict validator for the async course-ingestion job (INGEST-05). Reference
+ * fields only — raw content is read from storage by the worker (INGEST-06),
+ * never inlined in the envelope. `files` carries per-file metadata + the
+ * storage-relative path so the worker can locate each document.
+ */
+function validateIngestPayload(payload) {
+  const errors = [];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { valid: false, errors: ['payload must be an object'] };
+  }
+  for (const key of Object.keys(payload)) {
+    if (!['courseId', 'fileRef', 'files'].includes(key)) {
+      errors.push(`unknown field "${key}"`);
+    }
+  }
+  if (
+    typeof payload.courseId !== 'string' ||
+    !payload.courseId.trim() ||
+    payload.courseId.length > COURSE_ID_MAX_CHARS
+  ) {
+    errors.push(`courseId must be a non-empty string of at most ${COURSE_ID_MAX_CHARS} chars`);
+  }
+  if (
+    typeof payload.fileRef !== 'string' ||
+    !payload.fileRef.trim() ||
+    payload.fileRef.length > CONTENT_REF_MAX_CHARS
+  ) {
+    errors.push(`fileRef must be a non-empty string of at most ${CONTENT_REF_MAX_CHARS} chars`);
+  }
+  if (payload.files !== undefined) {
+    if (!Array.isArray(payload.files)) {
+      errors.push('files must be an array');
+    } else if (payload.files.length > INGEST_MAX_FILES) {
+      errors.push(`files exceeds ${INGEST_MAX_FILES} items`);
+    } else {
+      for (const file of payload.files) {
+        if (typeof file !== 'object' || file === null || Array.isArray(file)) {
+          errors.push('each file must be an object');
+          break;
+        }
+        const nameOk = (v) =>
+          typeof v === 'string' && v.trim().length > 0 && v.length <= INGEST_FILENAME_MAX_CHARS;
+        const mimeOk = (v) =>
+          typeof v === 'string' && v.trim().length > 0 && v.length <= INGEST_MIME_MAX_CHARS;
+        if (!nameOk(file.filename) || !nameOk(file.originalName)) {
+          errors.push(
+            `each file needs filename/originalName (non-empty, <= ${INGEST_FILENAME_MAX_CHARS} chars)`
+          );
+          break;
+        }
+        if (!mimeOk(file.mimetype)) {
+          errors.push(`file.mimetype must be a non-empty string of at most ${INGEST_MIME_MAX_CHARS} chars`);
+          break;
+        }
+        if (!Number.isInteger(file.size) || file.size < 0) {
+          errors.push('file.size must be an integer >= 0');
+          break;
+        }
+        if (
+          file.path !== undefined &&
+          (typeof file.path !== 'string' || !file.path.trim() || file.path.length > CONTENT_REF_MAX_CHARS)
+        ) {
+          errors.push(`file.path must be a non-empty string of at most ${CONTENT_REF_MAX_CHARS} chars`);
+          break;
+        }
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 function validateScheduleApplyPayload(payload) {
   const errors = [];
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -483,7 +561,7 @@ const VALIDATORS = {
   'study.coach.nudge': validateCoachPayload,
   'study.eval.step': validateEvalPayload,
   'study.search.query': validateSearchPayload,
-  'study.ingest.course': (p) => validateBasicObjectWithFields(p, ['fileRef']),
+  'study.ingest.course': validateIngestPayload,
   'study.knowledge.extract': validateKnowledgeExtractPayload,
   'study.schedule.apply': validateScheduleApplyPayload
 };
@@ -504,6 +582,7 @@ module.exports = {
   validateCoachPayload,
   validateSessionStats,
   validateScheduleApplyPayload,
+  validateIngestPayload,
   LIMITS: {
     GOAL_MAX_CHARS,
     CONCEPTS_MAX_ITEMS,
@@ -532,6 +611,9 @@ module.exports = {
     SCHEDULE_MAX_AFFECTED_TASK_IDS,
     SCHEDULE_MAX_DURATION_MINUTES,
     SCHEDULE_REASONING_MAX_CHARS,
-    SCHEDULE_MAX_PAYLOAD_BYTES
+    SCHEDULE_MAX_PAYLOAD_BYTES,
+    INGEST_MAX_FILES,
+    INGEST_FILENAME_MAX_CHARS,
+    INGEST_MIME_MAX_CHARS
   }
 };
