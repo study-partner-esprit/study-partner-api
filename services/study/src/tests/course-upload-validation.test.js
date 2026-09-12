@@ -58,6 +58,12 @@ jest.mock('@study-partner/shared/uploadValidation', () => {
   return { ...actual };
 });
 
+// INGEST-05: study uploads publish jobs instead of synchronous AI calls.
+jest.mock('@study-partner/shared/ai-messaging', () => ({
+  publishAiJob: jest.fn()
+}));
+const { publishAiJob } = require('@study-partner/shared/ai-messaging');
+
 app.use('/api/v1/study/courses', fakeAuth, courseRoutes);
 
 const { errorHandler } = require('@study-partner/shared/middleware');
@@ -76,6 +82,8 @@ const SHELL_SCRIPT = Buffer.from('#!/bin/sh\nrm -rf /\n');
 describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    publishAiJob.mockReset(); // clearAllMocks keeps implementations; root out stale ones
+    Course.instances = [];
     Course.prototype = {}; // no-op safety
     Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
   });
@@ -129,9 +137,8 @@ describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
     expect(res.body.error).toMatch(/unsupported file type/);
   });
 
-  test('accepts valid PDF + text files and proceeds to AI ingest', async () => {
-    const axios = require('axios');
-    jest.spyOn(axios, 'post').mockResolvedValue({ data: { course_id: 'c1', topics: [] } });
+  test('accepts valid PDF + text files and enqueues an ingestion job (202)', async () => {
+    publishAiJob.mockResolvedValue({ messageId: 'job-1', correlationId: 'corr-1' });
 
     const res = await request(app)
       .post('/api/v1/study/courses')
@@ -141,14 +148,50 @@ describe('INGEST-01 POST /api/v1/study/courses (file validation)', () => {
       .attach('files', VALID_PDF, { filename: 'notes.pdf', contentType: 'application/pdf' })
       .attach('files', VALID_TEXT, { filename: 'notes.txt', contentType: 'text/plain' });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBe('job-1');
+    expect(res.body.courseId).toBe('course-new');
+    expect(res.body.status).toBe('processing');
+
     expect(Course).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Good Course', status: 'processing' })
     );
 
     const instance = Course.instances[0];
     expect(instance.save).toHaveBeenCalled();
+
+    expect(publishAiJob).toHaveBeenCalledWith(
+      'study.ingest.course',
+      'user-123',
+      expect.objectContaining({
+        courseId: 'course-new',
+        fileRef: 'uploads/courses/course-new',
+        files: expect.arrayContaining([
+          expect.objectContaining({ originalName: 'notes.pdf', size: VALID_PDF.length }),
+          expect.objectContaining({ originalName: 'notes.txt', size: VALID_TEXT.length })
+        ])
+      }),
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
   }, 10000);
+
+  test('returns 503 and marks the course failed when the job bus is unavailable', async () => {
+    publishAiJob.mockRejectedValue(Object.assign(new Error('broker down'), { code: 'EBROKERDOWN' }));
+
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Queue Down Course')
+      .field('subject_id', 'subj-1')
+      .attach('files', VALID_PDF, { filename: 'notes.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/unavailable/);
+
+    const instance = Course.instances[0];
+    expect(instance.status).toBe('failed');
+    expect(instance.warning).toMatch(/enqueued/);
+  });
 });
 
 describe('INGEST-02 POST /api/v1/study/courses (size limits → 413)', () => {
@@ -305,5 +348,61 @@ describe('INGEST-04 POST /api/v1/study/courses (polyglot/trailer/encryption → 
     expect(res.status).toBe(422);
     expect(res.body.error).toMatch(/not readable text/);
     expect(Course.instances).toHaveLength(0);
+  });
+});
+
+describe('INGEST-05 POST /api/v1/study/courses/:courseId/files (async re-ingest → 202)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Course.instances = [];
+    Course.prototype = {};
+    Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
+    Course.findOne.mockResolvedValue({
+      _id: 'course-1',
+      userId: 'user-123',
+      title: 'Existing Course',
+      subjectId: 'subj-1',
+      files: [],
+      status: 'completed',
+      save: jest.fn().mockResolvedValue(true)
+    });
+    publishAiJob.mockResolvedValue({ messageId: 'job-re', correlationId: 'corr-re' });
+  });
+
+  test('stages new files, enqueues a job and returns 202 immediately', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses/course-1/files')
+      .set(authHeader())
+      .attach('files', VALID_PDF, { filename: 'more.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBe('job-re');
+    expect(res.body.courseId).toBe('course-1');
+    expect(res.body.status).toBe('processing');
+
+    expect(publishAiJob).toHaveBeenCalledWith(
+      'study.ingest.course',
+      'user-123',
+      expect.objectContaining({
+        courseId: 'course-1',
+        fileRef: 'uploads/courses/course-1',
+        files: expect.arrayContaining([
+          expect.objectContaining({ originalName: 'more.pdf', size: VALID_PDF.length })
+        ])
+      }),
+      expect.any(Object)
+    );
+  });
+
+  test('returns 503 when re-ingest enqueue fails', async () => {
+    publishAiJob.mockRejectedValue(new Error('broker down'));
+
+    const res = await request(app)
+      .post('/api/v1/study/courses/course-1/files')
+      .set(authHeader())
+      .attach('files', VALID_PDF, { filename: 'extra.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/unavailable/);
   });
 });
