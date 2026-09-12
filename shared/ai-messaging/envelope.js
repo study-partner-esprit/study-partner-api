@@ -26,6 +26,15 @@ const JOB_STATUSES = Object.freeze(['PENDING', 'PROCESSING', 'RETRYING', 'COMPLE
 
 const RESULT_STATUSES = Object.freeze(['completed', 'failed']);
 
+/**
+ * INGEST-06/07 — staged progress events published on ai.results under the
+ * `progress` routing key. Mirrors `AiProgressEnvelope` in
+ * study-partner-ai/messaging/envelope.py (status "progress", stage in
+ * PROGRESS_STAGES, progress ∈ [0,1], detail ≤256, no payload field).
+ */
+const PROGRESS_STATUS = 'progress';
+const PROGRESS_STAGES = Object.freeze(['parsing', 'enriching', 'embedding', 'indexing']);
+
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -123,11 +132,54 @@ function validateAiResultEnvelope(envelope) {
   return { valid: errors.length === 0, errors };
 }
 
+/**
+ * Validate an AI progress event envelope (INGEST-06/07).
+ * @param {*} envelope
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+function validateAiProgressEnvelope(envelope) {
+  const errors = [];
+  if (!validateCommonFields(envelope, errors)) {
+    return { valid: false, errors };
+  }
+  if (!AI_JOB_TYPES.includes(envelope.type)) {
+    errors.push(`type must be one of: ${AI_JOB_TYPES.join(', ')}`);
+  }
+  if (envelope.status !== PROGRESS_STATUS) {
+    errors.push(`status must be "${PROGRESS_STATUS}"`);
+  }
+  if (!PROGRESS_STAGES.includes(envelope.stage)) {
+    errors.push(`stage must be one of: ${PROGRESS_STAGES.join(', ')}`);
+  }
+  if (envelope.progress !== undefined && envelope.progress !== null) {
+    if (
+      typeof envelope.progress !== 'number' ||
+      Number.isNaN(envelope.progress) ||
+      envelope.progress < 0 ||
+      envelope.progress > 1
+    ) {
+      errors.push('progress must be a number in [0, 1]');
+    }
+  }
+  if (envelope.detail !== undefined && envelope.detail !== null) {
+    if (!isNonEmptyString(envelope.detail, 256)) {
+      errors.push('detail must be a string (max 256 chars)');
+    }
+  }
+  if ('payload' in envelope || 'error' in envelope) {
+    errors.push('progress envelopes must not carry payload/error fields');
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 module.exports = {
   ENVELOPE_VERSION,
   AI_JOB_TYPES,
   JOB_STATUSES,
   RESULT_STATUSES,
+  PROGRESS_STATUS,
+  PROGRESS_STAGES,
   validateAiJobEnvelope,
-  validateAiResultEnvelope
+  validateAiResultEnvelope,
+  validateAiProgressEnvelope
 };

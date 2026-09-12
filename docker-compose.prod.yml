@@ -125,8 +125,11 @@ services:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
     depends_on:
       mongodb:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - study_uploads:/app/services/study/uploads
@@ -233,6 +236,11 @@ services:
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - HF_API_KEY=${HF_API_KEY:-}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
+      - INGEST_UPLOADS_DIR=/app/uploads
+    volumes:
+      # INGEST-05/06: the ingestion worker reads staged course files from the
+      # SAME uploads volume the study service writes to.
+      - study_uploads:/app/uploads
     depends_on:
       mongodb:
         condition: service_healthy
