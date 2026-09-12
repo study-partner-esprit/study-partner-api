@@ -227,3 +227,83 @@ describe('INGEST-03 POST /api/v1/study/courses (content-type allowlist → 415)'
     expect(res.body.error).toMatch(/multipart\/form-data/);
   });
 });
+
+describe('INGEST-04 POST /api/v1/study/courses (polyglot/trailer/encryption → 422)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Course.instances = [];
+    Course.prototype = {};
+    Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
+  });
+
+  test('rejects a truncated PDF (no %%EOF trailer)', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Cut PDF')
+      .field('subject_id', 'subj-1')
+      .attach('files', Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n'), {
+        filename: 'cut.pdf',
+        contentType: 'application/pdf'
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/trailer/);
+    expect(Course.instances).toHaveLength(0);
+  });
+
+  test('rejects a polyglot PDF (payload after %%EOF)', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Polyglot')
+      .field('subject_id', 'subj-1')
+      .attach(
+        'files',
+        Buffer.concat([
+          Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF'),
+          Buffer.from('MZ\x90\x00payload')
+        ]),
+        { filename: 'sneaky.pdf', contentType: 'application/pdf' }
+      );
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/polyglot/);
+    expect(Course.instances).toHaveLength(0);
+  });
+
+  test('rejects an encrypted PDF with a clear message', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Locked')
+      .field('subject_id', 'subj-1')
+      .attach(
+        'files',
+        Buffer.from(
+          '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<< /Encrypt 9 0 R >>\n%%EOF'
+        ),
+        { filename: 'locked.pdf', contentType: 'application/pdf' }
+      );
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/encrypted/);
+    expect(Course.instances).toHaveLength(0);
+  });
+
+  test('rejects a masked-binary text file', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Masked')
+      .field('subject_id', 'subj-1')
+      .attach('files', Buffer.concat([Buffer.from('hello\n'), Buffer.alloc(60, 0xff)]), {
+        filename: 'masked.txt',
+        contentType: 'text/plain'
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/not readable text/);
+    expect(Course.instances).toHaveLength(0);
+  });
+});
