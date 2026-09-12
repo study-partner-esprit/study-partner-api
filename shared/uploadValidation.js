@@ -12,6 +12,10 @@
 
 const path = require('path');
 
+/** INGEST-02: per-file size cap for course uploads (25 MB → HTTP 413 on excess). */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024);
+
 /** Allowed types mapped by declared MIME → accepted extensions. */
 const ALLOWED_TYPES = {
   'application/pdf': ['.pdf'],
@@ -132,6 +136,8 @@ function validateUploadFiles(files = []) {
 module.exports = {
   ALLOWED_TYPES,
   SNIFF_BYTES,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_MB,
   validateUploadMetadata,
   validateUploadFile,
   validateUploadFiles,

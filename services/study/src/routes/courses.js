@@ -31,11 +31,17 @@ const storage = multer.diskStorage({
 });
 
 // INGEST-01: metadata (MIME + extension) allowlist, plus magic-byte sniffing.
-const { validateUploadMetadata, validateUploadFile } = require('@study-partner/shared/uploadValidation');
+// INGEST-02: 25MB per-file cap enforced by multer; excess → 413.
+const {
+  validateUploadMetadata,
+  validateUploadFile,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_MB
+} = require('@study-partner/shared/uploadValidation');
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file (INGEST-02 raises to 25MB)
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (req, file, cb) => {
     // Cheap first pass: declared MIME + extension must be allowed.
     const check = validateUploadMetadata(file);
@@ -45,6 +51,37 @@ const upload = multer({
     return cb(err);
   }
 });
+
+// INGEST-02: multer size-limit violations surface as 413 (never a generic 500),
+// and any file already written to disk by diskStorage is removed.
+function cleanupRequestFiles(req) {
+  if (!req.files) return;
+  const fs = require('fs');
+  const files = Array.isArray(req.files) ? req.files : Object.values(req.files).flat();
+  for (const file of files) {
+    try {
+      fs.unlinkSync(file.path);
+    } catch (_) {
+      /* best-effort cleanup */
+    }
+  }
+}
+
+function handleUploadError(err, req, res, next) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      cleanupRequestFiles(req);
+      const sizeErr = new Error(`File too large - maximum allowed is ${MAX_UPLOAD_MB}MB per file`);
+      sizeErr.statusCode = 413;
+      return next(sizeErr);
+    }
+    return next(err);
+  }
+  return next(err);
+}
+
+const withUploadError = (mw) => (req, res, next) =>
+  mw(req, res, (err) => handleUploadError(err, req, res, next));
 
 // INGEST-01: content is only trusted after magic-byte sniffing (never client MIME).
 // Multer diskStorage writes the file first, so we read the header back off disk.
@@ -130,7 +167,7 @@ router.get('/', async (req, res) => {
 router.post(
   '/',
   tierGate('vip', 'vip_plus', 'trial'),
-  upload.array('files', 10),
+  withUploadError(upload.array('files', 10)),
   sniffUploadedFiles,
   async (req, res) => {
     try {
@@ -391,7 +428,7 @@ router.delete('/:courseId', async (req, res) => {
 router.post(
   '/:courseId/files',
   tierGate('vip', 'vip_plus', 'trial'),
-  upload.array('files', 10),
+  withUploadError(upload.array('files', 10)),
   sniffUploadedFiles,
   async (req, res) => {
     try {
