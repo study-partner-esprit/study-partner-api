@@ -31,6 +31,13 @@ describe('RabbitMQ topology parity (Node ↔ fixture ↔ Python)', () => {
     expect(t.PROGRESS_ROUTING_KEY).toBe(rk.progress);
   });
 
+  test('ingest + progress queues match fixture', () => {
+    const q = fixture.queues;
+    expect(t.RESULT_QUEUE).toBe(q.results);
+    expect(t.PROGRESS_QUEUE).toBe(q.progress);
+    expect(t.INGEST_RESULT_QUEUE).toBe(q.ingestResults);
+  });
+
   test('queue naming matches fixture', () => {
     const n = fixture.naming;
     expect(t.RESULT_QUEUE).toBe(fixture.queues.results);

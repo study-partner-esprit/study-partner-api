@@ -15,12 +15,19 @@
 
 const crypto = require('crypto');
 const amqp = require('amqplib');
-const { validateAiJobEnvelope, validateAiResultEnvelope } = require('./envelope');
+const {
+  validateAiJobEnvelope,
+  validateAiResultEnvelope,
+  validateAiProgressEnvelope
+} = require('./envelope');
 const {
   EXCHANGE_JOBS,
   EXCHANGE_DELAY,
   EXCHANGE_RESULTS,
   RESULT_QUEUE,
+  PROGRESS_QUEUE,
+  INGEST_RESULT_QUEUE,
+  PROGRESS_ROUTING_KEY,
   RETRY_DELAYS_MS,
   workQueueName,
   dlqQueueName,
@@ -36,11 +43,12 @@ const RECONNECT_MAX_MS = 30000;
 
 let connection = null;
 let confirmChannel = null;
-let resultChannel = null;
 let connecting = null;
 let reconnectAttempts = 0;
 let closing = false;
-let resultHandler = null;
+// ai.results consumer channels, keyed by queue name (INGEST-07: the study
+// service subscribes to BOTH `progress` and `result` on its own queues).
+const consumerChannels = new Map();
 // messageIds the broker returned as UNROUTABLE (no queue matched). A
 // confirmed-but-unroutable publish is still a lost job, so publishAiJob
 // checks this set after confirms and fails loudly instead.
@@ -239,66 +247,113 @@ async function ensureTopologyForType(type) {
 }
 
 /**
- * Start consuming AI result events. The handler receives a VALIDATED result
- * envelope; invalid results are dead-lettered (nack, no requeue).
+ * Bind a consumer to a queue on the ai.results exchange. Messages are
+ * envelope-validated before the handler sees them; invalid messages are
+ * dead-lettered (nack, no requeue), handler failures retried once then
+ * dead-lettered. Idempotent per queue: a second call for the same queue
+ * returns the existing channel.
+ *
+ * @param {(event: object) => Promise<void>} handler validated envelope callback
+ * @param {{queue: string, routingKey: string, validator: Function, name: string}} opts
+ */
+async function startResultsConsumer(handler, { queue, routingKey, validator, name }) {
+  if (typeof handler !== 'function') {
+    throw new TypeError(`${name} handler must be a function`);
+  }
+  if (consumerChannels.has(queue)) {
+    return consumerChannels.get(queue);
+  }
+  await connect();
+
+  const ch = await connection.createChannel();
+  await ch.assertExchange(EXCHANGE_RESULTS, 'direct', { durable: true });
+  await ch.assertQueue(queue, { durable: true });
+  await ch.bindQueue(queue, EXCHANGE_RESULTS, routingKey);
+  ch.prefetch(10);
+
+  ch.consume(
+    queue,
+    async (msg) => {
+      if (!msg) return;
+      let parsed;
+      try {
+        parsed = JSON.parse(msg.content.toString());
+        const validation = validator(parsed);
+        if (!validation.valid) throw new Error(validation.errors.join('; '));
+      } catch (err) {
+        logger.error('ai_result_invalid', { error: err.message });
+        ch.nack(msg, false, false);
+        return;
+      }
+      try {
+        await handler(parsed);
+        ch.ack(msg);
+      } catch (err) {
+        logger.error('ai_result_handler_failed', {
+          correlationId: parsed.correlationId,
+          error: err.message
+        });
+        // Handler failure is retried by requeueing once; persistent failures
+        // eventually hit the queue's dead-letter policy.
+        ch.nack(msg, false, msg.fields.redelivered === false);
+      }
+    },
+    { noAck: false }
+  );
+  consumerChannels.set(queue, ch);
+  logger.info('ai_results_consumer_started', { queue, routingKey });
+  return ch;
+}
+
+/**
+ * Consume AI result events on the orchestrator inbox (routing key `result`).
  * @param {(result: object) => Promise<void>} handler
  */
 async function consumeAiResults(handler) {
-  if (typeof handler !== 'function') {
-    throw new TypeError('result handler must be a function');
-  }
-  resultHandler = handler;
-  await connect();
+  return startResultsConsumer(handler, {
+    queue: RESULT_QUEUE,
+    routingKey: 'result',
+    validator: validateAiResultEnvelope,
+    name: 'ai.results.inbox'
+  });
+}
 
-  if (!resultChannel || resultChannel === null) {
-    resultChannel = await connection.createChannel();
-    await resultChannel.assertExchange(EXCHANGE_RESULTS, 'direct', { durable: true });
-    await resultChannel.assertQueue(RESULT_QUEUE, { durable: true });
-    await resultChannel.bindQueue(RESULT_QUEUE, EXCHANGE_RESULTS, 'result');
-    resultChannel.prefetch(10);
+/**
+ * INGEST-07 — consume staged ingest progress events (routing key `progress`).
+ * @param {(progress: object) => Promise<void>} handler
+ */
+async function consumeAiProgress(handler) {
+  return startResultsConsumer(handler, {
+    queue: PROGRESS_QUEUE,
+    routingKey: PROGRESS_ROUTING_KEY,
+    validator: validateAiProgressEnvelope,
+    name: 'ai.results.progress'
+  });
+}
 
-    resultChannel.consume(
-      RESULT_QUEUE,
-      async (msg) => {
-        if (!msg) return;
-        let parsed;
-        try {
-          parsed = JSON.parse(msg.content.toString());
-          const validation = validateAiResultEnvelope(parsed);
-          if (!validation.valid) throw new Error(validation.errors.join('; '));
-        } catch (err) {
-          logger.error('ai_result_invalid', { error: err.message });
-          resultChannel.nack(msg, false, false);
-          return;
-        }
-        try {
-          await resultHandler(parsed);
-          resultChannel.ack(msg);
-        } catch (err) {
-          logger.error('ai_result_handler_failed', {
-            correlationId: parsed.correlationId,
-            error: err.message
-          });
-          // Handler failure is retried by requeueing once; persistent failures
-          // eventually hit the queue's dead-letter policy.
-          resultChannel.nack(msg, false, msg.fields.redelivered === false);
-        }
-      },
-      { noAck: false }
-    );
-    logger.info('ai_results_consumer_started', { queue: RESULT_QUEUE });
-  }
-  return resultChannel;
+/**
+ * INGEST-07 — consume AI result events on the study service's own queue
+ * (routing key `result`). Queue-separated from the orchestrator inbox so the
+ * study service can flip Course state without competing for messages.
+ * @param {(result: object) => Promise<void>} handler
+ */
+async function consumeIngestResults(handler) {
+  return startResultsConsumer(handler, {
+    queue: INGEST_RESULT_QUEUE,
+    routingKey: 'result',
+    validator: validateAiResultEnvelope,
+    name: 'ai.results.ingest'
+  });
 }
 
 /** Graceful shutdown: stop consuming, close channels/connection. */
 async function closeAiMessaging() {
   closing = true;
   try {
-    if (resultChannel) {
-      await resultChannel.close().catch(() => {});
-      resultChannel = null;
+    for (const ch of consumerChannels.values()) {
+      await ch.close().catch(() => {});
     }
+    consumerChannels.clear();
     if (confirmChannel) {
       await confirmChannel.close().catch(() => {});
       confirmChannel = null;
@@ -316,6 +371,8 @@ async function closeAiMessaging() {
 module.exports = {
   publishAiJob,
   consumeAiResults,
+  consumeAiProgress,
+  consumeIngestResults,
   ensureTopologyForType,
   closeAiMessaging
 };

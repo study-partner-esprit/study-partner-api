@@ -65,6 +65,13 @@ router.post('/setup', async (req, res) => {
     const course = await Course.findOne({ _id: courseId, userId });
     if (!course) return res.status(404).json({ error: 'Course not found' });
 
+    // INGEST-07: a course is only usable once its ingestion completed.
+    if (course.status !== 'completed') {
+      return res.status(400).json({
+        error: 'Course is still being processed. Please wait until processing is complete.'
+      });
+    }
+
     // Build task list from study plan tasks or course topics
     let tasks = [];
 
