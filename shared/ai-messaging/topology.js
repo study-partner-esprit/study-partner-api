@@ -26,9 +26,21 @@ const RESULT_QUEUE = 'ai.results.inbox';
 /**
  * SEPARATE routing key for staged progress events (INGEST-06). Workers publish
  * progress on ai.results with this key so the result inbox (bound to `result`)
- * never sees them; INGEST-07 binds a progress consumer here.
+ * never sees them. INGEST-07: the study service binds a consumer here.
  */
 const PROGRESS_ROUTING_KEY = 'progress';
+
+/**
+ * INGEST-07 — study-service consumers on ai.results (direct exchange).
+ * A direct exchange COPIES every message to every queue bound to its routing
+ * key, so the orchestrator's result inbox stays untouched:
+ *   • PROGRESS_QUEUE      binds `progress` → course ingest progress (stage/%)
+ *   • INGEST_RESULT_QUEUE binds `result`    → course completion/failure
+ * The study service ACKs only ingest events (type study.ingest.course) and
+ * acks everything else harmlessly.
+ */
+const PROGRESS_QUEUE = 'ai.results.progress';
+const INGEST_RESULT_QUEUE = 'ai.results.ingest';
 
 const RETRY_DELAYS_MS = Object.freeze(
   (() => {
@@ -128,6 +140,8 @@ module.exports = {
   EXCHANGE_RESULTS,
   RESULT_QUEUE,
   PROGRESS_ROUTING_KEY,
+  PROGRESS_QUEUE,
+  INGEST_RESULT_QUEUE,
   RETRY_DELAYS_MS,
   MAX_RETRIES,
   workQueueName,
