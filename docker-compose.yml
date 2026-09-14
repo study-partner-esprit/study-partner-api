@@ -19,6 +19,7 @@ services:
       - ANALYTICS_SERVICE_URL=http://analytics-service:3006
       - NOTIFICATION_SERVICE_URL=http://notification-service:3007
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-dev-internal-secret}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/v1/health']
       interval: 30s
