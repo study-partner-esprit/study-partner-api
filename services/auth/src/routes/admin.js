@@ -39,9 +39,14 @@ router.get('/users', async (req, res) => {
       filter.isActive = String(isActive).toLowerCase() === 'true';
     }
     if (query) {
+      // SEC-09: treat admin search as literal text. Never pass user input
+      // straight into $regex — crafted patterns (e.g. (a+)+) can stall the
+      // query (ReDoS). Escape regex metacharacters and coerce to a string so
+      // operator-injection via ?query[$regex]=... is neutralized too.
+      const safeQuery = String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { email: { $regex: query, $options: 'i' } },
-        { name: { $regex: query, $options: 'i' } }
+        { email: { $regex: safeQuery, $options: 'i' } },
+        { name: { $regex: safeQuery, $options: 'i' } }
       ];
     }
 
