@@ -425,7 +425,7 @@ router.get('/online-status/batch', async (req, res) => {
 // PUT /privacy — Update privacy settings
 router.put('/privacy', async (req, res) => {
   try {
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user.userId;
     const { showOnlineStatus, showStudyActivity, showStats, allowRequests } = req.body;
 
     const profile = await UserProfile.findOne({ userId });
@@ -872,7 +872,7 @@ router.get('/level', async (req, res) => {
 // PUT /notification-preferences — Update notification preferences
 router.put('/notification-preferences', async (req, res) => {
   try {
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user.userId;
     const { preferences } = req.body;
 
     if (!preferences || typeof preferences !== 'object') {

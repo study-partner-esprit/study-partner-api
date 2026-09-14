@@ -34,3 +34,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Runtime uploads (test + user files)
+uploads/

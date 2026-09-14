@@ -1,7 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
 const mongoose = require('mongoose');
-const crypto = require('crypto');
 const { StudyPlan, Task, Course } = require('../models');
 const { getWeakCompetenciesForCourse } = require('../services/competencyQueries');
 const { tierGate } = require('@study-partner/shared/tierGate');
@@ -58,8 +57,6 @@ router.post('/create', tierGate('vip', 'vip_plus', 'trial'), async (req, res) =>
       });
     }
 
-    const correlationId = crypto.randomUUID();
-    const messageId = crypto.randomUUID();
     const requestId = req.get('X-Request-ID') || `req-${Date.now()}`;
 
     // BLOOM-10: weakest-first targeting input for the planner. Fetched from the
@@ -140,6 +137,12 @@ router.post('/create-status', async (req, res) => {
     }
     if (job.status === 'FAILED') {
       return res.status(500).json({ error: 'Plan generation failed', details: job.error });
+    }
+
+    // SEC-12: only the job owner (or admin) may finalise this plan.
+    const isAdmin = req.user?.role === 'admin' || req.user?.isAdmin === true;
+    if (!isAdmin && String(job.userId) !== String(req.user.userId)) {
+      return res.status(403).json({ error: 'Forbidden: not the owner of this job' });
     }
 
     // COMPLETED — persist StudyPlan
