@@ -398,7 +398,9 @@ router.post(
 router.post(
   '/refresh',
   asyncHandler(async (req, res) => {
-    const { refreshToken } = req.body;
+    // Refresh token is delivered via the httpOnly cookie (SEC-03); the body
+    // path is kept as a backward-compat fallback during rollout.
+    const refreshToken = (req.cookies && req.cookies.refreshToken) || req.body.refreshToken;
 
     if (!refreshToken) {
       return res.status(400).json({ error: 'Refresh token required' });
