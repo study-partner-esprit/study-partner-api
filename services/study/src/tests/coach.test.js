@@ -7,6 +7,8 @@ const express = require('express');
 
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_coach_partner';
+process.env.INTERNAL_API_SECRET = 'test-internal-secret';
+process.env.RABBITMQ_URL = 'amqp://localhost:5672/%2F';
 process.env.NODE_ENV = 'test';
 
 // Prevent process.exit() from killing tests

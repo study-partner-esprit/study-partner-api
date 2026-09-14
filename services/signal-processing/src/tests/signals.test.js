@@ -6,6 +6,7 @@ const request = require('supertest');
 
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.INTERNAL_API_SECRET = 'test-internal-secret';
 process.env.NODE_ENV = 'test';
 
 // Prevent process.exit() from killing tests

@@ -9,36 +9,21 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck
+  healthCheck,
+  requireEnv
 } = require('@study-partner/shared');
 const { authenticate } = require('@study-partner/shared/auth');
 
 // --- Environment validation (fail-fast on missing secrets) ---
-const REQUIRED_ENV = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
-const INSECURE_DEFAULTS = [
-  'your-super-secret-jwt-key-change-in-production',
-  'your-secret-key',
-  'change-me',
-  'change-this-refresh-secret'
-];
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    console.error(`[FATAL] Missing required environment variable: ${key}`);
-    process.exit(1);
-  }
-}
-if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
+requireEnv(['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'], { serviceName: 'auth' });
+
+// Stripe keys must be provided together (billing enabled) or not at all.
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+if (Boolean(stripeSecretKey) !== Boolean(stripeWebhookSecret)) {
   console.error(
-    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
-  );
-  process.exit(1);
-}
-if (
-  process.env.NODE_ENV === 'production' &&
-  INSECURE_DEFAULTS.includes(process.env.JWT_REFRESH_SECRET)
-) {
-  console.error(
-    '[FATAL] JWT_REFRESH_SECRET is set to an insecure default. Set a real secret before running in production.'
+    '[auth][FATAL] STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must be set together ' +
+      '(or both omitted to disable billing).'
   );
   process.exit(1);
 }

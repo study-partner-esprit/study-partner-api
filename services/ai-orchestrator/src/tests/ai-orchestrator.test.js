@@ -6,6 +6,7 @@ const request = require('supertest');
 
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.RABBITMQ_URL = 'amqp://localhost:5672/%2F';
 process.env.NODE_ENV = 'test';
 process.env.PYTHON_SERVICE_URL = 'http://localhost:8000';
 

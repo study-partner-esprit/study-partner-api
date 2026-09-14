@@ -7,7 +7,7 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  logger
+  requireEnv
 } = require('@study-partner/shared');
 const aiRoutes = require('./routes/ai');
 const jobsRoutes = require('./routes/jobs');
@@ -15,26 +15,7 @@ const evalRoutes = require('./routes/eval');
 const searchRoutes = require('./routes/search');
 
 // --- Environment validation (fail-fast on missing secrets) ---
-const REQUIRED_ENV = ['JWT_SECRET'];
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    logger.error(`[FATAL] Missing required environment variable: ${key}`);
-    process.exit(1);
-  }
-}
-const INSECURE_DEFAULTS = [
-  'your-super-secret-jwt-key-change-in-production',
-  'your-secret-key',
-  'change-me',
-  'replace_with_a_strong_secret',
-  'change-this-refresh-secret'
-];
-if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
-  logger.error(
-    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
-  );
-  process.exit(1);
-}
+requireEnv(['JWT_SECRET', 'MONGODB_URI', 'RABBITMQ_URL'], { serviceName: 'ai-orchestrator' });
 
 const app = express();
 app.set('trust proxy', 1);
