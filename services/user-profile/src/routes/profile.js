@@ -2,6 +2,8 @@ const express = require('express');
 const Joi = require('joi');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
+const { logger } = require('@study-partner/shared');
 const UserProfile = require('../models/UserProfile');
 
 const router = express.Router();
@@ -176,9 +178,16 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
     await profile.save();
   }
 
-  // Log saved avatar for debugging
+  // Log avatar hash + length instead of the full base64 payload (SEC-08)
   try {
-    console.log('Profile updated for user:', userId, 'avatar:', profile.avatar);
+    logger.info('Profile updated for user', {
+      userId,
+      avatarPresent: Boolean(profile.avatar),
+      avatarLength: profile.avatar ? profile.avatar.length : 0,
+      avatarHash: profile.avatar
+        ? crypto.createHash('sha256').update(profile.avatar).digest('hex')
+        : null
+    });
   } catch (e) {
     console.error('Error logging profile avatar', e);
   }
