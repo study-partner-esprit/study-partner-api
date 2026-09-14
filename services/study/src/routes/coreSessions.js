@@ -106,7 +106,7 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     console.log('Received session create request body:', req.body);
-    const { error } = createSessionSchema.validate(req.body);
+    const { error, value } = createSessionSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       console.error('Session validation error:', error.details[0].message);
       return res.status(400).json({ error: error.details[0].message });
@@ -116,8 +116,8 @@ router.post(
 
     const session = await StudySession.create({
       userId,
-      status: req.body.duration ? 'completed' : 'active',
-      ...req.body
+      status: value.duration ? 'completed' : 'active',
+      ...value
     });
 
     res.status(201).json({
@@ -131,7 +131,7 @@ router.post(
 router.put(
   '/:sessionId',
   asyncHandler(async (req, res) => {
-    const { error } = updateSessionSchema.validate(req.body);
+    const { error, value } = updateSessionSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
@@ -145,7 +145,7 @@ router.put(
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    Object.assign(session, req.body);
+    Object.assign(session, value);
 
     // If completing, ensure end time and duration are set
     if (req.body.status === 'completed' && !session.duration && session.startTime) {

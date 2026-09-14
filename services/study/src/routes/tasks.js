@@ -68,7 +68,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const { error } = createTaskSchema.validate(req.body);
+    const { error, value } = createTaskSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
@@ -77,7 +77,7 @@ router.post(
 
     const task = await Task.create({
       userId,
-      ...req.body
+      ...value
     });
 
     res.status(201).json({
@@ -91,7 +91,7 @@ router.post(
 router.put(
   '/:taskId',
   asyncHandler(async (req, res) => {
-    const { error } = updateTaskSchema.validate(req.body);
+    const { error, value } = updateTaskSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
@@ -106,7 +106,7 @@ router.put(
     }
 
     const wasCompleted = task.status === 'completed';
-    Object.assign(task, req.body);
+    Object.assign(task, value);
 
     if (req.body.status === 'completed' && !task.completedAt) {
       task.completedAt = new Date();

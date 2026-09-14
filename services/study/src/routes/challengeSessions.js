@@ -115,7 +115,7 @@ router.get('/challenge/:sessionId', async (req, res) => {
 
 // PUT /challenge/:sessionId/complete — Complete challenge session and award challenge KP/XP
 router.put('/challenge/:sessionId/complete', async (req, res) => {
-  const { error } = challengeCompleteSchema.validate(req.body);
+  const { error, value } = challengeCompleteSchema.validate(req.body, { stripUnknown: true });
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
   }
@@ -133,7 +133,7 @@ router.put('/challenge/:sessionId/complete', async (req, res) => {
     }
 
     const completedSuccessfully = req.body.completedSuccessfully !== false;
-    Object.assign(session, req.body);
+    Object.assign(session, value);
     session.mode = 'exam';
     session.status = 'completed';
 
