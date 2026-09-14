@@ -34,8 +34,16 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static directory for uploads
+// SEC-11: dotfiles and directory listings denied; content sniffing off.
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'), {
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff')
+  })
+);
 
 // Shared middleware
 app.use(securityMiddleware());

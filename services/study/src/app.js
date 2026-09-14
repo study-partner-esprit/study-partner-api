@@ -43,7 +43,15 @@ app.use(loggingMiddleware);
 app.use(rateLimiter());
 
 // Serve uploaded files (subject images) from the service's uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// SEC-11: dotfiles and directory listings are denied; content sniffing off.
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'), {
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff')
+  })
+);
 
 // Health check
 app.get('/api/v1/health', healthCheck('study'));

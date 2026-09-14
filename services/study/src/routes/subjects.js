@@ -1,10 +1,21 @@
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
 const { Subject } = require('../models');
 const axios = require('axios');
 const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
+
+// SEC-11: full allowlist for subject images — declared MIME must map to an
+// accepted extension (extensions are still only used for display/storage as
+// base64 data URLs, but loose `image/*` accepts SVG/XHTML polyglots).
+const IMAGE_ALLOW_TYPES = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'image/webp': ['.webp']
+};
 
 // Configure multer for image uploads - use memoryStorage so we can store image data in DB
 const storage = multer.memoryStorage();
@@ -13,11 +24,11 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    if (file.mimetype && file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    const allowedExts = IMAGE_ALLOW_TYPES[file.mimetype];
+    const err = new Error('Only JPEG, PNG, GIF, or WebP images are allowed');
+    if (!allowedExts || !allowedExts.includes(ext)) return cb(err);
+    cb(null, true);
   }
 });
 

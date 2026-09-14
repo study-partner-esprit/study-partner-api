@@ -419,3 +419,50 @@ describe('INGEST-05 POST /api/v1/study/courses/:courseId/files (async re-ingest 
     expect(res.body.error).toMatch(/unavailable/);
   });
 });
+
+describe('SEC-11 stored filenames are sanitized (no traversal, no client name)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    publishAiJob.mockReset();
+    publishAiJob.mockResolvedValue({ messageId: 'job-1', correlationId: 'corr-1' });
+    Course.instances = [];
+    Subject.findOne.mockResolvedValue({ _id: 'subj-1', userId: 'user-123' });
+  });
+
+  test('path-traversal filename lands in the course dir with a generated safe name', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Secure Course')
+      .field('subject_id', 'subj-1')
+      .attach('files', VALID_PDF, { filename: '../../evil.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(202);
+
+    const payload = publishAiJob.mock.calls[0][2];
+    expect(payload.fileRef).toBe('uploads/courses/course-new');
+    // Multer basenames the client name; the stored name is server-generated
+    // (never the client file name) and confined to the course directory.
+    expect(payload.fileRef).not.toContain('..');
+    const file = payload.files[0];
+    expect(file.filename).toMatch(/^\d+-\d+\.pdf$/);
+  });
+
+  test('server-generated name keeps only a safe lowercase extension', async () => {
+    const res = await request(app)
+      .post('/api/v1/study/courses')
+      .set(authHeader())
+      .field('title', 'Secure Course 2')
+      .field('subject_id', 'subj-1')
+      // Weird-but-allowlisted basename: only the .md extension is preserved;
+      // nothing else from the client name reaches the stored path.
+      .attach('files', VALID_TEXT, { filename: 'readme..md', contentType: 'text/plain' });
+
+    expect(res.status).toBe(202);
+
+    const payload = publishAiJob.mock.calls[0][2];
+    const file = payload.files[0];
+    expect(file.originalName).toBe('readme..md');
+    expect(file.filename).toMatch(/^\d+-\d+\.md$/);
+  });
+});
