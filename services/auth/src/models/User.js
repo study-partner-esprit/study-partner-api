@@ -115,6 +115,7 @@ const userSchema = new mongoose.Schema(
     verificationExpires: { type: Date },
     verificationOtp: { type: String },
     verificationOtpExpires: { type: Date },
+    verificationOtpAttempts: { type: Number, default: 0 },
     resetPasswordToken: { type: String, index: true },
     resetPasswordExpires: { type: Date },
     notificationPreferences: {

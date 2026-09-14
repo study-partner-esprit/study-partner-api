@@ -64,6 +64,8 @@ app.use('/api/v1/auth', authRoutes);
 // Use supertest
 const request = require('supertest');
 
+const OTP_MAX_ATTEMPTS = 5;
+
 describe('Auth Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -190,6 +192,114 @@ describe('Auth Service', () => {
         .set('Authorization', 'Bearer fake-token');
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ── OTP lifecycle (SEC-02) ──────────────────────────────────
+  describe('POST /api/v1/auth/verify-otp', () => {
+    const otpUser = (overrides = {}) => ({
+      ...mockUser,
+      verificationOtp: '123456',
+      verificationOtpExpires: new Date(Date.now() + 10 * 60 * 1000),
+      verificationOtpAttempts: 0,
+      save: jest.fn().mockResolvedValue(true),
+      ...overrides
+    });
+
+    it('should verify a valid OTP and reset attempts', async () => {
+      const user = otpUser({ verificationOtpAttempts: 2 });
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: '123456' });
+
+      expect(res.status).toBe(200);
+      expect(user.isVerified).toBe(true);
+      expect(user.verificationOtpAttempts).toBe(0);
+      expect(user.save).toHaveBeenCalled();
+    });
+
+    it('should reject a wrong OTP and increment attempts', async () => {
+      const user = otpUser();
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: '000000' });
+
+      expect(res.status).toBe(400);
+      expect(user.verificationOtpAttempts).toBe(1);
+      expect(user.save).toHaveBeenCalled();
+    });
+
+    it('should lock the OTP out once the attempt budget is exhausted', async () => {
+      const user = otpUser({ verificationOtpAttempts: OTP_MAX_ATTEMPTS });
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: '000000' });
+
+      expect(res.status).toBe(429);
+      expect(user.verificationOtpAttempts).toBe(OTP_MAX_ATTEMPTS);
+    });
+
+    it('should invalidate the OTP when the final attempt fails', async () => {
+      const user = otpUser({ verificationOtpAttempts: OTP_MAX_ATTEMPTS - 1 });
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: '000000' });
+
+      expect(res.status).toBe(400);
+      expect(user.verificationOtpAttempts).toBe(OTP_MAX_ATTEMPTS);
+      expect(user.verificationOtp).toBeUndefined();
+      expect(user.verificationOtpExpires).toBeUndefined();
+    });
+
+    it('should reject an expired OTP', async () => {
+      const user = otpUser({
+        verificationOtpExpires: new Date(Date.now() - 1000)
+      });
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: '123456' });
+
+      expect(res.status).toBe(400);
+      expect(user.verificationOtpAttempts).toBe(1);
+    });
+
+    it('should reject malformed OTP payload', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'test@example.com', otp: 'abc' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/v1/auth/resend-verification', () => {
+    it('should reset OTP attempts when issuing a new code', async () => {
+      const user = {
+        ...mockUser,
+        isVerified: false,
+        verificationOtpAttempts: 4,
+        save: jest.fn().mockResolvedValue(true)
+      };
+      User.findOne.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/resend-verification')
+        .send({ email: 'test@example.com' });
+
+      expect(res.status).toBe(200);
+      expect(user.verificationOtpAttempts).toBe(0);
+      expect(user.verificationOtp).toBeDefined();
+      expect(user.save).toHaveBeenCalled();
     });
   });
 });
