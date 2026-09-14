@@ -55,6 +55,7 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     networks:
       - study-partner-network

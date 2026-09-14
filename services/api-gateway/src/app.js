@@ -7,8 +7,14 @@ const {
   errorHandler,
   rateLimiter,
   requireMultipart,
+  requireInternal,
+  requireEnv,
   logger
 } = require('@study-partner/shared');
+
+// The gateway validates x-internal-secret for protected internal routes, so it
+// must have the shared secret configured; fail fast if it is missing.
+requireEnv(['INTERNAL_API_SECRET'], { serviceName: 'api-gateway' });
 
 const app = express();
 app.set('trust proxy', 1);
@@ -315,7 +321,11 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/v1/monitoring/metrics', (req, res) => {
+// Internal-only: metrics expose request/error-rate internals and must not be
+// readable from the public internet. requireInternal allows internal services
+// presenting x-internal-secret (admin JWTs are not verified here because the
+// gateway does not hold JWT secret material).
+app.get('/api/v1/monitoring/metrics', requireInternal, (req, res) => {
   res.json({
     uptime_seconds: Math.floor((Date.now() - metrics.startTime) / 1000),
     total_requests: metrics.requests,
