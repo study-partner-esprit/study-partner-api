@@ -10,6 +10,7 @@
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/test_study_partner';
+process.env.RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672/%2F';
 process.env.NODE_ENV = 'test';
 process.env.AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 

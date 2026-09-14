@@ -4,15 +4,9 @@ const axios = require('axios');
 const FocusSession = require('../models/FocusSession');
 const { tierGate } = require('@study-partner/shared/tierGate');
 const { asyncHandler } = require('@study-partner/shared/middleware');
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
-
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
-});
 
 // Validation schemas
 const startSessionSchema = Joi.object({

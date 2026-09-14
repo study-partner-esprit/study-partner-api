@@ -3,17 +3,11 @@ const Friendship = require('../models/Friendship');
 const UserProfile = require('../models/UserProfile');
 const Gamification = require('../models/Gamification');
 const axios = require('axios');
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3007';
-
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
-});
 
 // Helper: send notification
 async function notify(userId, type, title, message, metadata, authHeader) {

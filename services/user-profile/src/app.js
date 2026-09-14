@@ -13,29 +13,15 @@ const {
   loggingMiddleware,
   errorHandler,
   rateLimiter,
-  healthCheck
+  healthCheck,
+  requireEnv
 } = require('@study-partner/shared');
 const { authenticate } = require('@study-partner/shared/auth');
 
 // --- Environment validation (fail-fast on missing secrets) ---
-const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
-const INSECURE_DEFAULTS = [
-  'your-super-secret-jwt-key-change-in-production',
-  'your-secret-key',
-  'change-me'
-];
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    console.error(`[FATAL] Missing required environment variable: ${key}`);
-    process.exit(1);
-  }
-}
-if (process.env.NODE_ENV === 'production' && INSECURE_DEFAULTS.includes(process.env.JWT_SECRET)) {
-  console.error(
-    '[FATAL] JWT_SECRET is set to an insecure default. Set a real secret before running in production.'
-  );
-  process.exit(1);
-}
+requireEnv(['JWT_SECRET', 'MONGODB_URI', 'INTERNAL_API_SECRET'], {
+  serviceName: 'user-profile'
+});
 
 const app = express();
 
@@ -48,8 +34,16 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static directory for uploads
+// SEC-11: dotfiles and directory listings denied; content sniffing off.
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'), {
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff')
+  })
+);
 
 // Shared middleware
 app.use(securityMiddleware());

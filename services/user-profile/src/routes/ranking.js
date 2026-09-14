@@ -13,7 +13,7 @@ const {
   startSeason,
   closeSeasonAndStartNext
 } = require('../services/rankingService');
-const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
+const { requireInternal } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
@@ -204,7 +204,7 @@ router.get('/session-result', async (req, res) => {
   }
 });
 
-router.post('/events/award', requireInternalOrAdmin, async (req, res) => {
+router.post('/events/award', requireInternal, async (req, res) => {
   try {
     const { error, value } = awardEventSchema.validate(req.body || {});
     if (error) {

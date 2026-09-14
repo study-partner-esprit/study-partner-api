@@ -2,6 +2,8 @@ const express = require('express');
 const Joi = require('joi');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
+const { logger } = require('@study-partner/shared');
 const UserProfile = require('../models/UserProfile');
 
 const router = express.Router();
@@ -151,8 +153,9 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
   // Remove avatarFile from body if present (multer might have left it or legacy reasons)
   delete req.body.avatarFile;
 
-  // Joi validation
-  const { error } = updateProfileSchema.validate(req.body);
+  // Joi validation (SEC-10: stripUnknown whitelists fields, so `stats`,
+  // `role`, `tier`, `userId` etc. from the client are dropped)
+  const { error, value } = updateProfileSchema.validate(req.body, { stripUnknown: true });
   if (error) {
     console.error('Profile validation error:', error.details[0].message, req.body);
     return res.status(400).json({ error: error.details[0].message });
@@ -163,22 +166,29 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
   let profile = await UserProfile.findOne({ userId });
 
   if (!profile) {
-    profile = await UserProfile.create({ userId, ...req.body });
+    profile = await UserProfile.create({ userId, ...value });
   } else {
     // Only update fields that are present
-    if (req.body.nickname !== undefined) profile.nickname = req.body.nickname;
-    if (req.body.bio !== undefined) profile.bio = req.body.bio;
-    if (req.body.avatar !== undefined) profile.avatar = req.body.avatar;
-    if (req.body.preferences) {
-      profile.preferences = { ...profile.preferences, ...req.body.preferences };
+    if (value.nickname !== undefined) profile.nickname = value.nickname;
+    if (value.bio !== undefined) profile.bio = value.bio;
+    if (value.avatar !== undefined) profile.avatar = value.avatar;
+    if (value.preferences) {
+      profile.preferences = { ...profile.preferences, ...value.preferences };
     }
 
     await profile.save();
   }
 
-  // Log saved avatar for debugging
+  // Log avatar hash + length instead of the full base64 payload (SEC-08)
   try {
-    console.log('Profile updated for user:', userId, 'avatar:', profile.avatar);
+    logger.info('Profile updated for user', {
+      userId,
+      avatarPresent: Boolean(profile.avatar),
+      avatarLength: profile.avatar ? profile.avatar.length : 0,
+      avatarHash: profile.avatar
+        ? crypto.createHash('sha256').update(profile.avatar).digest('hex')
+        : null
+    });
   } catch (e) {
     console.error('Error logging profile avatar', e);
   }
@@ -415,7 +425,7 @@ router.get('/online-status/batch', async (req, res) => {
 // PUT /privacy — Update privacy settings
 router.put('/privacy', async (req, res) => {
   try {
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user.userId;
     const { showOnlineStatus, showStudyActivity, showStats, allowRequests } = req.body;
 
     const profile = await UserProfile.findOne({ userId });
@@ -862,7 +872,7 @@ router.get('/level', async (req, res) => {
 // PUT /notification-preferences — Update notification preferences
 router.put('/notification-preferences', async (req, res) => {
   try {
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user.userId;
     const { preferences } = req.body;
 
     if (!preferences || typeof preferences !== 'object') {

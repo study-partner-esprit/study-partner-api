@@ -8,15 +8,9 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 const { requireMultipart } = require('@study-partner/shared/middleware');
 const { deleteObjectivesForDocument } = require('../services/objectives');
 const { publishCourseIngestionJob } = require('../services/ingestionJob');
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
-
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
-});
 
 // INGEST-05: move freshly-uploaded files into a course-scoped directory so the
 // async worker (INGEST-06) can find them via a single unambiguous fileRef.
@@ -50,14 +44,24 @@ function cleanupCourseFiles(courseId) {
   }
 }
 
+// SEC-11: storage filenames are server-generated and never echo the client
+// name. The extension is whitelisted to a plain `[A-Za-z0-9]` suffix so no
+// path separator, control char or traversal payload survives into the path.
+const STORAGE_EXT_RE = /^\.[a-z0-9]{1,8}$/;
+
+function sanitizeStoredFilename(file) {
+  const safeSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+  const ext = (path.extname(file.originalname) || '').toLowerCase();
+  return STORAGE_EXT_RE.test(ext) ? `${safeSuffix}${ext}` : `${safeSuffix}.bin`;
+}
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    cb(null, sanitizeStoredFilename(file));
   }
 });
 
@@ -67,7 +71,8 @@ const {
   validateUploadMetadata,
   validateUploadFile,
   MAX_UPLOAD_BYTES,
-  MAX_UPLOAD_MB
+  MAX_UPLOAD_MB,
+  SNIFF_BYTES
 } = require('@study-partner/shared/uploadValidation');
 
 const upload = multer({
@@ -114,43 +119,64 @@ function handleUploadError(err, req, res, next) {
 const withUploadError = (mw) => (req, res, next) =>
   mw(req, res, (err) => handleUploadError(err, req, res, next));
 
-// INGEST-01: content is only trusted after magic-byte sniffing (never client MIME).
-// Multer diskStorage writes the file first, so we read the header back off disk.
-// Rejects scripts/executables disguised as PDF/text and MIME/content mismatches.
-function sniffUploadedFiles(req, res, next) {
+// SEC-11: `fs.readFileSync` was blocking the event loop on every upload; the
+// header is now read via a bounded stream (fast binary reject without loading
+// a 25MB file) and the authoritative content check reads async (`fs.promises`).
+function streamFileSlice(filePath, start, end) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const stream = fs.createReadStream(filePath, { start, end });
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
+async function sniffUploadedFiles(req, res, next) {
   if (!req.files || req.files.length === 0) return next();
 
-  const fs = require('fs');
-  for (const file of req.files) {
-    let buffer;
-    try {
-      buffer = fs.readFileSync(file.path);
-    } catch (readErr) {
-      const err = new Error('Failed to read uploaded file');
-      err.statusCode = 422;
-      return next(err);
+  const rejectAndCleanup = (files, message) => {
+    for (const f of files) {
+      try {
+        fs.unlinkSync(f.path);
+      } catch (_) {
+        /* best-effort cleanup */
+      }
     }
+    const err = new Error(message);
+    err.statusCode = 422;
+    return err;
+  };
 
-    const check = validateUploadFile({
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      buffer
-    });
-
-    if (!check.valid) {
-      // Clean up all files of this request before responding.
-      const unlink = require('fs').unlinkSync;
-      req.files.concat(file).forEach((f) => {
-        try {
-          unlink(f.path);
-        } catch (_) {
-          /* best-effort cleanup */
+  try {
+    // Fast path: sniff only the header, reject binaries before any full read.
+    for (const file of req.files) {
+      const header = await streamFileSlice(file.path, 0, SNIFF_BYTES - 1);
+      if (header.length > 0) {
+        const { sniffMagicBytes } = require('@study-partner/shared/uploadValidation');
+        if (sniffMagicBytes(header) === 'binary') {
+          return next(
+            rejectAndCleanup(req.files, 'Upload rejected: binary/script content is not allowed')
+          );
         }
-      });
-      const err = new Error('Upload rejected: ' + check.errors.join('; '));
-      err.statusCode = 422;
-      return next(err);
+      }
     }
+
+    // Authoritative check: ensure MIME/extension match the (async) full content.
+    for (const file of req.files) {
+      const buffer = await fs.promises.readFile(file.path);
+      const check = validateUploadFile({
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        buffer
+      });
+
+      if (!check.valid) {
+        return next(rejectAndCleanup(req.files, 'Upload rejected: ' + check.errors.join('; ')));
+      }
+    }
+  } catch (readErr) {
+    return next(rejectAndCleanup(req.files, 'Failed to read uploaded file'));
   }
 
   return next();

@@ -8,7 +8,7 @@
  * Usage: require('@study-partner/shared/processHandlers')('service-name');
  * Call as early as possible in the service entrypoint.
  */
-const { logger } = require('./logger');
+const logger = require('./logger');
 
 function registerProcessHandlers(serviceName = 'unknown-service') {
   process.on('unhandledRejection', (reason, promise) => {

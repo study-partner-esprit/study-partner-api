@@ -6,6 +6,7 @@ const request = require('supertest');
 
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.INTERNAL_API_SECRET = 'test-internal-secret';
 process.env.NODE_ENV = 'test';
 
 const app = require('../app');
@@ -68,6 +69,35 @@ describe('API Gateway', () => {
 
       // Reaches the proxy (no downstream service running in unit test) → 502 proxy error.
       expect(res.status).toBe(502);
+    });
+  });
+
+  describe('SEC-07 monitoring endpoint protection', () => {
+    it('rejects /api/v1/monitoring/metrics without an internal secret', async () => {
+      const res = await request(app).get('/api/v1/monitoring/metrics');
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects /api/v1/monitoring/metrics with a wrong internal secret', async () => {
+      const res = await request(app)
+        .get('/api/v1/monitoring/metrics')
+        .set('x-internal-secret', 'wrong-secret');
+      expect(res.status).toBe(403);
+    });
+
+    it('serves metrics to internal callers presenting x-internal-secret', async () => {
+      const res = await request(app)
+        .get('/api/v1/monitoring/metrics')
+        .set('x-internal-secret', 'test-internal-secret');
+      expect(res.status).toBe(200);
+      expect(res.body.total_requests).toBeDefined();
+      expect(res.body.error_rate).toMatch(/%$/);
+    });
+
+    it('keeps the health endpoint public', async () => {
+      const res = await request(app).get('/api/v1/monitoring/health');
+      expect([200, 207]).toContain(res.status);
+      expect(res.body.status).toMatch(/healthy|degraded/);
     });
   });
 });

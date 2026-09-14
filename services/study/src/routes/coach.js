@@ -44,7 +44,7 @@ const nudgeSchema = Joi.object({
 // POST /api/v1/coach/nudge → 202 { jobId }
 router.post('/nudge', tierGate('vip', 'vip_plus', 'trial'), async (req, res) => {
   try {
-    const { error, value } = nudgeSchema.validate(req.body || {});
+    const { error, value } = nudgeSchema.validate(req.body || {}, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }

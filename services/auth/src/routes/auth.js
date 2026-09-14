@@ -51,6 +51,8 @@ const pruneExpiredTokens = (tokens) => {
 };
 
 const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_TTL_MS = 10 * 60 * 1000;
 const onboardingSchema = Joi.object({
   studyGoals: Joi.array().items(Joi.string().trim().min(2).max(80)).max(10).optional(),
   preferredSubjects: Joi.array().items(Joi.string().trim().min(2).max(80)).max(20).optional(),
@@ -242,7 +244,7 @@ router.post(
     }
 
     const verificationOtp = generateOtp();
-    const verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const verificationOtpExpires = new Date(Date.now() + OTP_TTL_MS);
     const user = await User.create({
       email: normalizedEmail,
       password: hashedPassword,
@@ -799,7 +801,8 @@ router.post(
       user.verificationToken = token;
       user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
       user.verificationOtp = verificationOtp;
-      user.verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      user.verificationOtpExpires = new Date(Date.now() + OTP_TTL_MS); // 10 minutes
+      user.verificationOtpAttempts = 0;
       await user.save();
 
       await sendVerificationEmail(user.email, token, verificationOtp);
@@ -821,11 +824,31 @@ router.post(
 
       const user = await User.findOne({
         email: value.email.toLowerCase().trim(),
-        verificationOtp: value.otp,
-        verificationOtpExpires: { $gt: new Date() }
+        verificationOtp: { $exists: true }
       });
 
-      if (!user) {
+      if (!user || !user.verificationOtp) {
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
+      }
+
+      if (user.verificationOtpAttempts >= OTP_MAX_ATTEMPTS) {
+        return res
+          .status(429)
+          .json({ error: 'Too many attempts. Request a new verification code.' });
+      }
+
+      const expired =
+        !user.verificationOtpExpires || user.verificationOtpExpires.getTime() <= Date.now();
+
+      if (expired || user.verificationOtp !== value.otp) {
+        user.verificationOtpAttempts = (user.verificationOtpAttempts || 0) + 1;
+        if (user.verificationOtpAttempts >= OTP_MAX_ATTEMPTS) {
+          // Lock the OTP out so a compromised code cannot be replayed after the
+          // attempt budget is exhausted — user must request a fresh code.
+          user.verificationOtp = undefined;
+          user.verificationOtpExpires = undefined;
+        }
+        await user.save().catch(() => {});
         return res.status(400).json({ error: 'Invalid or expired OTP' });
       }
 
@@ -835,6 +858,7 @@ router.post(
       user.verificationExpires = undefined;
       user.verificationOtp = undefined;
       user.verificationOtpExpires = undefined;
+      user.verificationOtpAttempts = 0;
       await user.save();
 
       return res.json({ message: 'Email verified successfully' });

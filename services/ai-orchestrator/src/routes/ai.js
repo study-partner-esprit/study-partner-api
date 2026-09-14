@@ -446,7 +446,7 @@ router.post('/plan/create', tierGate('vip', 'vip_plus', 'trial'), async (req, re
 router.post('/signals/analyze-frame', tierGate('vip_plus', 'trial'), async (req, res) => {
   try {
     const formData = new FormData();
-    formData.append('user_id', req.body.user_id || req.user?.userId || 'anonymous');
+    formData.append('user_id', req.user.userId);
     if (req.file) {
       formData.append('frame', req.file.buffer, {
         filename: 'frame.jpg',

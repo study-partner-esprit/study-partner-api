@@ -124,19 +124,33 @@ function requireRole(role) {
  * calls. Internal callers must present the shared INTERNAL_API_SECRET via the
  * `x-internal-secret` header. A normal (non-admin) user JWT alone is rejected.
  * Fails closed: if INTERNAL_API_SECRET is not configured, only admins pass.
+ * Single canonical implementation (SEC-05); callers must not re-implement this.
  */
-function requireInternalOrAdmin(req, res, next) {
+function requireInternal(req, res, next) {
   if (req.user && (req.user.role === 'admin' || req.user.isAdmin === true)) {
     return next();
   }
 
   const expectedSecret = process.env.INTERNAL_API_SECRET;
-  const providedSecret = req.headers['x-internal-secret'];
+  const providedSecret = req.headers && req.headers['x-internal-secret'];
   if (expectedSecret && providedSecret && providedSecret === expectedSecret) {
     return next();
   }
 
   return res.status(403).json({ error: 'Forbidden: admin or internal access required' });
+}
+
+/**
+ * Build the headers required for an internal service-to-service call: the
+ * `x-internal-secret` plus an optional propagated Authorization header.
+ * Single canonical implementation (SEC-05); callers must not re-implement this.
+ */
+function buildInternalHeaders(authorization) {
+  const headers = {};
+  const expectedSecret = process.env.INTERNAL_API_SECRET;
+  if (authorization) headers.Authorization = authorization;
+  if (expectedSecret) headers['x-internal-secret'] = expectedSecret;
+  return headers;
 }
 
 /**
@@ -160,6 +174,7 @@ module.exports = {
   verifyToken,
   authenticate,
   requireRole,
-  requireInternalOrAdmin,
-  isInternalRequest
+  requireInternal,
+  isInternalRequest,
+  buildInternalHeaders
 };

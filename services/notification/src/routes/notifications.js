@@ -2,7 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const Notification = require('../models/Notification');
 const { isEmailEnabled, sendNotificationEmail } = require('../services/emailService');
-const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
+const { requireInternal } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
@@ -71,7 +71,7 @@ router.get('/', async (req, res, next) => {
 
 // ── POST /api/v1/notifications/broadcast — fire WS only, no DB storage ──
 // Internal services only (or admins).
-router.post('/broadcast', requireInternalOrAdmin, async (req, res, next) => {
+router.post('/broadcast', requireInternal, async (req, res, next) => {
   try {
     const { userIds, payload } = req.body;
     if (!Array.isArray(userIds) || !payload) {
@@ -88,7 +88,7 @@ router.post('/broadcast', requireInternalOrAdmin, async (req, res, next) => {
 });
 
 // ── POST /api/v1/notifications — internal services only (or admins) ──
-router.post('/', requireInternalOrAdmin, async (req, res, next) => {
+router.post('/', requireInternal, async (req, res, next) => {
   try {
     const { error, value } = createSchema.validate(req.body);
     if (error) {
@@ -130,7 +130,7 @@ router.post('/', requireInternalOrAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/email/test', requireInternalOrAdmin, async (req, res, next) => {
+router.post('/email/test', requireInternal, async (req, res, next) => {
   try {
     if (process.env.NODE_ENV === 'production') {
       return res.status(403).json({ error: 'Email test disabled in production' });

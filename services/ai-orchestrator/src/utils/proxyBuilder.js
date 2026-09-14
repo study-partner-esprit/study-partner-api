@@ -1,5 +1,7 @@
 const axios = require('axios');
 
+const { logger } = require('@study-partner/shared');
+
 const requireOwnedUser = (req, res, next) => {
   const targetUserId = req.params.userId;
   const isAdmin = req.user?.role === 'admin' || req.user?.isAdmin === true;
@@ -36,6 +38,8 @@ function createProxy(options) {
   }
 
   const handler = async (req, res) => {
+    const targetPath = typeof path === 'function' ? path(req) : path;
+    const url = `${targetUrl}${targetPath}`;
     try {
       let validatedBody = req.body;
       if (schema) {
@@ -60,9 +64,6 @@ function createProxy(options) {
         if (msg) return res.status(400).json({ error: msg });
       }
 
-      const targetPath = typeof path === 'function' ? path(req) : path;
-      const url = `${targetUrl}${targetPath}`;
-
       const config = { timeout };
       if (forwardQuery) config.params = req.query;
       if (forwardAuth) config.headers = { Authorization: req.headers.authorization };
@@ -80,22 +81,29 @@ function createProxy(options) {
       }
       return res.json(response.data);
     } catch (err) {
-      if (err.response) {
-        return res.status(err.response.status).json({
-          error: err.response.data?.detail || err.response.data?.error || 'Request failed',
-          details: err.response.data?.detail || err.message
+      // SEC-08: never leak upstream status bodies, stack traces, or internal
+      // error details to the client. Log the full error server-side and return
+      // generic statuses only.
+      try {
+        logger.error('AI proxy upstream error', {
+          method: req.method,
+          url: `${targetUrl}${targetPath}`,
+          upstreamStatus: err.response?.status,
+          upstreamBody: err.response?.data,
+          message: err.message,
+          stack: err.stack
         });
+      } catch (_) {
+        // Logging must never break the request path.
+      }
+
+      if (err.response) {
+        return res.status(502).json({ error: 'Upstream service error' });
       }
       if (err.request) {
-        return res.status(503).json({
-          error: 'AI service unavailable',
-          details: 'Cannot connect to AI service'
-        });
+        return res.status(503).json({ error: 'AI service unavailable' });
       }
-      return res.status(500).json({
-        error: 'Request failed',
-        details: err.message
-      });
+      return res.status(500).json({ error: 'Request failed' });
     }
   };
 
