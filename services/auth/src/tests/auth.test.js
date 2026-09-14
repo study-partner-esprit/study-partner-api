@@ -43,7 +43,8 @@ jest.mock('@study-partner/shared/auth', () => ({
     }
     req.user = { userId: '507f1f77bcf86cd799439011', role: 'student' };
     return next();
-  }
+  },
+  hashRefreshToken: (token) => require('crypto').createHash('sha256').update(token).digest('hex')
 }));
 
 jest.mock('../services/emailService', () => ({
@@ -59,6 +60,7 @@ const bcrypt = require('bcryptjs');
 const authRoutes = require('../routes/auth');
 const app = express();
 app.use(express.json());
+app.use(require('cookie-parser')());
 app.use('/api/v1/auth', authRoutes);
 
 // Use supertest
@@ -114,7 +116,8 @@ describe('Auth Service', () => {
         .send({ email: 'test@example.com', password: 'Password123!' });
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('token');
+      expect(res.body).not.toHaveProperty('token');
+      expect(res.body).toHaveProperty('user');
       expect(res.body.message).toBe('Login successful');
     });
 
@@ -166,6 +169,34 @@ describe('Auth Service', () => {
         .send({ refreshToken: 'invalid-token' });
 
       expect(res.status).toBe(401);
+    });
+
+    it('should accept a refresh token from the httpOnly cookie (SEC-03)', async () => {
+      const jwt = require('jsonwebtoken');
+      const token = jwt.sign(
+        { userId: mockUser._id, email: mockUser.email },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: '7d' }
+      );
+      const user = {
+        ...mockUser,
+        refreshTokens: [
+          {
+            tokenHash: require('crypto').createHash('sha256').update(token).digest('hex'),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          }
+        ],
+        save: jest.fn().mockResolvedValue(true)
+      };
+      User.findById.mockResolvedValue(user);
+
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', `refreshToken=${token}`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Token refreshed');
     });
   });
 
