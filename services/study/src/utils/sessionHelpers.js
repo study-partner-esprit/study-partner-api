@@ -1,4 +1,4 @@
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 const DEFAULT_TASK_ESTIMATED_MINUTES = 30;
 
 const toSafeInteger = (value, fallback = 0) => {
@@ -19,11 +19,6 @@ const getAxiosErrorDetails = (error) => ({
   message: error.message,
   status: error.response?.status,
   data: error.response?.data
-});
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
 });
 
 const isTeamSessionMember = (session, userId) => {

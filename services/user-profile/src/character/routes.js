@@ -9,7 +9,12 @@ const router = express.Router();
 const characterManager = require('./character_manager');
 const abilityExecutor = require('./ability_executor');
 const { CharacterPurchase } = require('./models');
-const { authenticate, requireInternalOrAdmin, requireRole, isInternalRequest } = require('@study-partner/shared/auth');
+const {
+  authenticate,
+  requireInternal,
+  requireRole,
+  isInternalRequest
+} = require('@study-partner/shared/auth');
 const logger = require('@study-partner/shared/logger');
 
 const auth = authenticate;
@@ -659,7 +664,7 @@ router.get('/user/unlock-progress', auth, async (req, res) => {
  * POST /api/user/unlock-progress/sync
  * Sync unlock progress from explicit metrics payload (internal orchestration)
  */
-router.post('/user/unlock-progress/sync', auth, requireInternalOrAdmin, async (req, res) => {
+router.post('/user/unlock-progress/sync', auth, requireInternal, async (req, res) => {
   try {
     const userId = isInternalRequest(req)
       ? req.body.userId || getAuthenticatedUserId(req)
@@ -694,7 +699,7 @@ router.post('/user/unlock-progress/sync', auth, requireInternalOrAdmin, async (r
  * Trigger ability effect execution (requires internal auth)
  * Called after study session completion
  */
-router.post('/abilities/trigger', auth, requireInternalOrAdmin, async (req, res) => {
+router.post('/abilities/trigger', auth, requireInternal, async (req, res) => {
   try {
     const userId = isInternalRequest(req)
       ? req.body.userId || getAuthenticatedUserId(req)

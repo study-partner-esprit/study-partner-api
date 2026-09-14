@@ -8,15 +8,9 @@ const { tierGate } = require('@study-partner/shared/tierGate');
 const { requireMultipart } = require('@study-partner/shared/middleware');
 const { deleteObjectivesForDocument } = require('../services/objectives');
 const { publishCourseIngestionJob } = require('../services/ingestionJob');
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
-
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
-});
 
 // INGEST-05: move freshly-uploaded files into a course-scoped directory so the
 // async worker (INGEST-06) can find them via a single unambiguous fileRef.

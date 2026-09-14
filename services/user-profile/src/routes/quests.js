@@ -1,7 +1,7 @@
 const express = require('express');
 const Quest = require('../models/Quest');
 const Gamification = require('../models/Gamification');
-const { requireInternalOrAdmin } = require('@study-partner/shared/auth');
+const { requireInternal } = require('@study-partner/shared/auth');
 
 const router = express.Router();
 
@@ -161,7 +161,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── POST /api/v1/users/quests/progress — increment quest progress by action (internal or admin) ──
-router.post('/progress', requireInternalOrAdmin, async (req, res) => {
+router.post('/progress', requireInternal, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { action } = req.body;

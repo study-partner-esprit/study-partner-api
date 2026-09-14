@@ -2,15 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const { Subject } = require('../models');
 const axios = require('axios');
+const { buildInternalHeaders } = require('@study-partner/shared/auth');
 
 const router = express.Router();
-
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-const buildInternalHeaders = (authorization) => ({
-  ...(authorization ? { Authorization: authorization } : {}),
-  ...(INTERNAL_API_SECRET ? { 'x-internal-secret': INTERNAL_API_SECRET } : {})
-});
 
 // Configure multer for image uploads - use memoryStorage so we can store image data in DB
 const storage = multer.memoryStorage();
