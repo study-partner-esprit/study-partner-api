@@ -4,6 +4,10 @@
  */
 
 process.env.JWT_SECRET = 'test-secret-key';
+process.env.MONGODB_URI = 'mongodb://localhost:27017/test_study_partner';
+process.env.RABBITMQ_URL = 'amqp://localhost:5672/%2F';
+process.env.NODE_ENV = 'test';
+process.exit = jest.fn();
 
 const request = require('supertest');
 const jwt = require('jsonwebtoken');

@@ -73,6 +73,7 @@ services:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
       - ALLOW_TEST_COUPONS=false
       - COUPON_CODES=
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
@@ -102,6 +103,7 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
@@ -123,6 +125,7 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
@@ -148,6 +151,7 @@ services:
       - NODE_ENV=production
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-mindflow}
     depends_on:
       mongodb:
@@ -168,6 +172,7 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?INTERNAL_API_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     depends_on:
@@ -187,6 +192,7 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/study_partner?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - CORS_ORIGIN=${CORS_ORIGIN:-${FRONTEND_URL:-https://studypartner.app}}
     depends_on:
       mongodb:
