@@ -54,7 +54,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const { error } = createTopicSchema.validate(req.body);
+    const { error, value } = createTopicSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
@@ -63,7 +63,7 @@ router.post(
 
     const topic = await Topic.create({
       userId,
-      ...req.body
+      ...value
     });
 
     res.status(201).json({
@@ -77,7 +77,7 @@ router.post(
 router.put(
   '/:topicId',
   asyncHandler(async (req, res) => {
-    const { error } = updateTopicSchema.validate(req.body);
+    const { error, value } = updateTopicSchema.validate(req.body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
@@ -91,7 +91,7 @@ router.put(
       return res.status(404).json({ error: 'Topic not found' });
     }
 
-    Object.assign(topic, req.body);
+    Object.assign(topic, value);
     await topic.save();
 
     res.json({

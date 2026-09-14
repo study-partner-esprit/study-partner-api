@@ -153,8 +153,9 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
   // Remove avatarFile from body if present (multer might have left it or legacy reasons)
   delete req.body.avatarFile;
 
-  // Joi validation
-  const { error } = updateProfileSchema.validate(req.body);
+  // Joi validation (SEC-10: stripUnknown whitelists fields, so `stats`,
+  // `role`, `tier`, `userId` etc. from the client are dropped)
+  const { error, value } = updateProfileSchema.validate(req.body, { stripUnknown: true });
   if (error) {
     console.error('Profile validation error:', error.details[0].message, req.body);
     return res.status(400).json({ error: error.details[0].message });
@@ -165,14 +166,14 @@ router.put('/', upload.single('avatarFile'), async (req, res) => {
   let profile = await UserProfile.findOne({ userId });
 
   if (!profile) {
-    profile = await UserProfile.create({ userId, ...req.body });
+    profile = await UserProfile.create({ userId, ...value });
   } else {
     // Only update fields that are present
-    if (req.body.nickname !== undefined) profile.nickname = req.body.nickname;
-    if (req.body.bio !== undefined) profile.bio = req.body.bio;
-    if (req.body.avatar !== undefined) profile.avatar = req.body.avatar;
-    if (req.body.preferences) {
-      profile.preferences = { ...profile.preferences, ...req.body.preferences };
+    if (value.nickname !== undefined) profile.nickname = value.nickname;
+    if (value.bio !== undefined) profile.bio = value.bio;
+    if (value.avatar !== undefined) profile.avatar = value.avatar;
+    if (value.preferences) {
+      profile.preferences = { ...profile.preferences, ...value.preferences };
     }
 
     await profile.save();
